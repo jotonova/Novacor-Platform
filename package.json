@@ -1,0 +1,12 @@
+{
+  "name": "pro-vision",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.17.2",
+    "express": "^4.18.2"
+  }
+}
