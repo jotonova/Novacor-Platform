@@ -88,9 +88,9 @@ body {
 }
 .nav-tabs::-webkit-scrollbar { display: none; }
 .nav-tab {
-  padding: 6px 14px;
+  padding: 6px 10px;
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 0.72rem; letter-spacing: 0.1em; font-weight: 600;
+  font-size: 0.67rem; letter-spacing: 0.08em; font-weight: 600;
   text-transform: uppercase;
   color: var(--text-muted);
   cursor: pointer;
@@ -968,7 +968,7 @@ label {
       <div class="quick-link-btn" onclick="switchPage('information')"><span class="quick-link-icon">🏛️</span> Novacor Info</div>
       <div class="quick-link-btn" onclick="switchPage('novabooks')"><span class="quick-link-icon">📒</span> Novabooks</div>
       <div class="quick-link-btn" onclick="switchPage('qualefi')"><span class="quick-link-icon">📊</span> Qual-Efi</div>
-      <div class="quick-link-btn" onclick="switchPage('financials')"><span class="quick-link-icon">💰</span> Financials</div>
+      <div class="quick-link-btn" onclick="switchPage('conversionlab')"><span class="quick-link-icon">⚗️</span> Conversion-Lab</div>
       <div class="quick-link-btn" onclick="switchPage('closed')"><span class="quick-link-icon">🏆</span> Closed Deals</div>
       <div class="quick-link-btn" onclick="openModal('modal-quote-editor')"><span class="quick-link-icon">💬</span> Edit Quote</div>
     </div>
@@ -2267,6 +2267,7 @@ function switchPage(id) {
   if(id==='crm') renderCRM();
   if(id==='signs') renderSigns();
   if(id==='financials') renderFinancials();
+  if(id==='conversionlab') { document.getElementById('page-conversionlab').scrollTop = 0; }
   if(id==='information') renderInformation();
 }
 
