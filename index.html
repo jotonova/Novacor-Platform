@@ -88,9 +88,9 @@ body {
 }
 .nav-tabs::-webkit-scrollbar { display: none; }
 .nav-tab {
-  padding: 5px 10px;
+  padding: 6px 12px;
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 0.72rem; letter-spacing: 0.08em; font-weight: 600;
+  font-size: 0.78rem; letter-spacing: 0.08em; font-weight: 600;
   text-transform: uppercase;
   color: var(--text-muted);
   cursor: pointer;
@@ -2296,6 +2296,12 @@ function switchPage(id) {
     document.getElementById('app').scrollTop = 0;
     const el = document.getElementById('page-conversionlab'); if(el) el.scrollTop = 0;
     const f = document.querySelector('#page-conversionlab iframe'); if(f) try { f.contentWindow.scrollTo(0,0); } catch(e) {}
+    setTimeout(() => {
+      const page = document.getElementById('page-conversionlab');
+      if(page) page.scrollTop = 0;
+      window.scrollTo(0, 0);
+      document.querySelector('.app-content, #app, main')?.scrollTo(0, 0);
+    }, 50);
   }
   if(id==='information') renderInformation();
 }
