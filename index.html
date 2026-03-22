@@ -88,9 +88,9 @@ body {
 }
 .nav-tabs::-webkit-scrollbar { display: none; }
 .nav-tab {
-  padding: 6px 10px;
+  padding: 4px 8px;
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 0.67rem; letter-spacing: 0.08em; font-weight: 600;
+  font-size: 0.65rem; letter-spacing: 0.08em; font-weight: 600;
   text-transform: uppercase;
   color: var(--text-muted);
   cursor: pointer;
@@ -929,20 +929,18 @@ label {
   </div>
 
   <div class="nav-tabs">
-    <button class="nav-tab active" onclick="switchPage('dashboard')">🏠 Dashboard</button>
-    <button class="nav-tab" onclick="switchPage('qualefi')">📊 Qual-Efi</button>
-    <button class="nav-tab" onclick="switchPage('closed')">🏆 Closed</button>
-    <button class="nav-tab" onclick="switchPage('novabooks')">📒 Novabooks</button>
-    <button class="nav-tab" onclick="switchPage('information')">ℹ️ Information</button>
-    <button class="nav-tab" onclick="switchPage('contractors')">🔧 Contractors</button>
-    <button class="nav-tab" onclick="switchPage('crm')">📞 CRM</button>
-    <button class="nav-tab" onclick="switchPage('signs')">🪧 Signs</button>
-    <button class="nav-tab" onclick="switchPage('conversionlab')">⚗️ Conversion-Lab</button>
+    <button class="nav-tab active" onclick="switchPage('dashboard')">Dashboard</button>
+    <button class="nav-tab" onclick="switchPage('qualefi')">Qual-Efi</button>
+    <button class="nav-tab" onclick="switchPage('closed')">Closed</button>
+    <button class="nav-tab" onclick="switchPage('novabooks')">Novabooks</button>
+    <button class="nav-tab" onclick="switchPage('information')">Information</button>
+    <button class="nav-tab" onclick="switchPage('contractors')">Contractors</button>
+    <button class="nav-tab" onclick="switchPage('crm')">CRM</button>
+    <button class="nav-tab" onclick="switchPage('signs')">Signs</button>
+    <button class="nav-tab" onclick="switchPage('conversionlab')">Conversion-Lab</button>
   </div>
 
-  <div class="nav-right">
-    <div class="nav-date" id="nav-date"></div>
-  </div>
+  <div class="nav-right"></div>
 </nav>
 
 <div id="app">
@@ -2267,7 +2265,10 @@ function switchPage(id) {
   if(id==='crm') renderCRM();
   if(id==='signs') renderSigns();
   if(id==='financials') renderFinancials();
-  if(id==='conversionlab') { document.getElementById('page-conversionlab').scrollTop = 0; }
+  if(id==='conversionlab') {
+    const el = document.getElementById('page-conversionlab'); if(el) el.scrollTop = 0;
+    const f = document.querySelector('#page-conversionlab iframe'); if(f) try { f.contentWindow.scrollTo(0,0); } catch(e) {}
+  }
   if(id==='information') renderInformation();
 }
 
@@ -2282,11 +2283,7 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
 });
 
 // Date display
-function updateDate() {
-  const now = new Date();
-  document.getElementById('nav-date').textContent =
-    now.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
-}
+function updateDate() {}
 updateDate(); setInterval(updateDate, 60000);
 
 // ══════════════════════════════════════════════════════
