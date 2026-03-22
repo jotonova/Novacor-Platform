@@ -83,7 +83,10 @@ body {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 3px;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.nav-tabs::-webkit-scrollbar { display: none; }
 .nav-tab {
   padding: 6px 14px;
   font-family: 'Barlow Condensed', sans-serif;
@@ -934,7 +937,6 @@ label {
     <button class="nav-tab" onclick="switchPage('contractors')">🔧 Contractors</button>
     <button class="nav-tab" onclick="switchPage('crm')">📞 CRM</button>
     <button class="nav-tab" onclick="switchPage('signs')">🪧 Signs</button>
-    <button class="nav-tab" onclick="switchPage('financials')">💰 Financials</button>
     <button class="nav-tab" onclick="switchPage('conversionlab')">⚗️ Conversion-Lab</button>
   </div>
 
