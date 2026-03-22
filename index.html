@@ -2231,10 +2231,36 @@ label {
 // ══════════════════════════════════════════════════════
 // DATA LAYER — localStorage
 // ══════════════════════════════════════════════════════
+// DATA LAYER — Turso backend via /api/store (write-through cache)
+// ══════════════════════════════════════════════════════
+const _cache = {};
+
+async function initDB() {
+  try {
+    const res = await fetch('/api/store');
+    if (res.ok) {
+      const data = await res.json();
+      for (const [k, v] of Object.entries(data)) {
+        try { _cache[k] = JSON.parse(v); } catch { _cache[k] = v; }
+      }
+    }
+  } catch(e) { console.warn('[DB] Backend unavailable:', e.message); }
+}
+
 const DB = {
-  get(k) { try { return JSON.parse(localStorage.getItem('nc_'+k)) || null; } catch { return null; } },
-  set(k,v) { localStorage.setItem('nc_'+k, JSON.stringify(v)); },
-  del(k) { localStorage.removeItem('nc_'+k); }
+  get(k) { return _cache['nc_'+k] ?? null; },
+  set(k, v) {
+    _cache['nc_'+k] = v;
+    fetch('/api/store/nc_'+k, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: v })
+    }).catch(() => {});
+  },
+  del(k) {
+    delete _cache['nc_'+k];
+    fetch('/api/store/nc_'+k, { method: 'DELETE' }).catch(() => {});
+  }
 };
 
 function load(k, def) { return DB.get(k) ?? def; }
@@ -2717,8 +2743,7 @@ var QE_BUDGET_MAP = {
 
 function openLinkQualEfi() {
   // Load saved Qual-Efi deals from localStorage
-  var qeDeals = [];
-  try { qeDeals = JSON.parse(localStorage.getItem('novacor_qe_deals_v1') || '[]'); } catch(e) {}
+  var qeDeals = _cache[QE_KEY] || [];
   if(!qeDeals.length) {
     toast('No saved Qual-Efi analyses found. Run and save a deal in Qual-Efi first.');
     return;
@@ -3824,7 +3849,15 @@ function renderFinancials() {
 // ══════════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════════
-function init() {
+async function init() {
+  await initDB();
+  // ONE-TIME CLEANUP: remove previously seeded expenses
+  var deals = load('active_deals', []);
+  var changed = false;
+  deals.forEach(function(d) {
+    if(d._expensesSeeded) { d.expenses = []; delete d._expensesSeeded; changed = true; }
+  });
+  if(changed) save('active_deals', deals);
   // Initialize contractors if first visit
   if(!DB.get('contractors')) save('contractors', defaultContractors);
   renderDashboard();
@@ -3835,19 +3868,6 @@ function init() {
     });
   });
 }
-// ── ONE-TIME CLEANUP: remove previously seeded expenses ──
-(function clearSeededExpenses() {
-  var deals = load('active_deals', []);
-  var changed = false;
-  deals.forEach(function(d) {
-    if(d._expensesSeeded) {
-      d.expenses = [];
-      delete d._expensesSeeded;
-      changed = true;
-    }
-  });
-  if(changed) save('active_deals', deals);
-})();
 
 init();
 
@@ -4229,8 +4249,11 @@ window.qeResetThresh = function() {
 
 // SAVE / LOAD
 const QE_KEY='novacor_qe_deals_v1';
-function qeGetDeals(){try{return JSON.parse(localStorage.getItem(QE_KEY)||'[]');}catch{return[];}}
-function qeSaveDeals(d){localStorage.setItem(QE_KEY,JSON.stringify(d));}
+function qeGetDeals(){ return _cache[QE_KEY] || []; }
+function qeSaveDeals(d){
+  _cache[QE_KEY]=d;
+  fetch('/api/store/'+QE_KEY,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({value:d})}).catch(()=>{});
+}
 function qeCollectState(){
   const s={};
   document.querySelectorAll('#qe-app input:not([readonly]),#qe-app select,#qe-app textarea').forEach(el=>{if(el.id)s[el.id]=el.value;});
@@ -4276,7 +4299,7 @@ window.qeDeleteDeal = function(name) {
 };
 window.qeClearAllDeals = function() {
   if(!confirm('Delete ALL saved deals? Cannot be undone.'))return;
-  localStorage.removeItem(QE_KEY);qeRenderDealList();
+  delete _cache[QE_KEY];fetch('/api/store/'+QE_KEY,{method:'DELETE'}).catch(()=>{});qeRenderDealList();
   qeToast('All deals cleared');
 };
 window.qeRenderDealList = function() {
