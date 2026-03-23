@@ -2451,9 +2451,14 @@ function switchPage(id) {
   if(id==='signs') renderSigns();
   if(id==='financials') renderFinancials();
   if(id==='conversionlab') {
-    window.scrollTo(0,0);
     const iframe = document.querySelector('#page-conversionlab iframe');
-    if(iframe) { iframe.src = iframe.src; }
+    if(iframe) {
+      const src = 'https://novacor-conversion-lab.onrender.com';
+      iframe.src = '';
+      setTimeout(() => { iframe.src = src; }, 50);
+    }
+    window.scrollTo(0, 0);
+    document.getElementById('page-conversionlab').scrollTop = 0;
   }
   if(id==='information') renderInformation();
 }
