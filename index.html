@@ -394,6 +394,78 @@ label {
 .goals-list li:last-child { border: none; }
 .goals-list li::before { content: '◆'; color: var(--gold); font-size: 0.5rem; margin-top: 5px; flex-shrink: 0; }
 
+/* ── GOOGLE WIDGETS ── */
+.google-widgets-row {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+  border-top: 1px solid var(--border);
+}
+.google-widget {
+  padding: 22px 28px;
+  border-right: 1px solid var(--border);
+}
+.google-widget:last-child { border-right: none; }
+.google-widget-header {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;
+}
+.google-widget-title {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.65rem; letter-spacing: 0.22em; text-transform: uppercase;
+  color: var(--gold); font-weight: 600;
+}
+.google-widget-title svg { flex-shrink: 0; }
+.google-signin-btn {
+  display: inline-flex; align-items: center; gap-8px;
+  background: var(--card-bg); border: 1px solid var(--border);
+  color: var(--silver); border-radius: 4px;
+  padding: 8px 16px; font-size: 0.78rem; font-family: 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600;
+  cursor: pointer; text-decoration: none; transition: all 0.2s;
+  gap: 8px;
+}
+.google-signin-btn:hover { border-color: var(--gold); color: var(--gold); }
+.google-widget-list { display: flex; flex-direction: column; gap: 1px; }
+.google-widget-item {
+  padding: 9px 10px; border-radius: 5px;
+  transition: background 0.15s; cursor: default;
+}
+.google-widget-item:hover { background: rgba(255,255,255,0.04); }
+.google-widget-item-top {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;
+  margin-bottom: 2px;
+}
+.google-widget-item-subject {
+  font-size: 0.82rem; color: var(--white); font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;
+}
+.google-widget-item-time {
+  font-size: 0.68rem; color: var(--text-muted); white-space: nowrap; flex-shrink: 0;
+}
+.google-widget-item-from {
+  font-size: 0.72rem; color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.google-widget-item-snippet {
+  font-size: 0.72rem; color: rgba(143,163,191,0.6);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px;
+}
+.google-widget-item-date {
+  font-size: 0.78rem; color: var(--gold-light); font-weight: 500; flex-shrink: 0;
+}
+.google-widget-item-title {
+  font-size: 0.82rem; color: var(--white); flex: 1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.google-widget-item-loc {
+  font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;
+}
+.google-widget-empty {
+  padding: 28px 0; text-align: center; color: var(--text-muted); font-size: 0.82rem;
+}
+.google-widget-loading {
+  padding: 28px 0; text-align: center; color: var(--text-muted); font-size: 0.78rem;
+  letter-spacing: 0.08em;
+}
+
 /* ─────────────────────────────────────────
    QUAL-EFI — FULL ANALYZER
 ───────────────────────────────────────── */
@@ -996,6 +1068,40 @@ label {
           <p>Our mission is to acquire and revitalize properties in a way that benefits both people and communities — creating opportunities for residents, partners, and neighborhoods to thrive together.</p>
         </div>
 
+      </div>
+    </div>
+  </div>
+
+  <!-- Google Widgets -->
+  <div class="google-widgets-row">
+    <div class="google-widget">
+      <div class="google-widget-header">
+        <div class="google-widget-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          Gmail Inbox
+        </div>
+        <a id="gmail-signin-btn" href="/auth/google" class="google-signin-btn" style="display:none;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+          Connect Google
+        </a>
+      </div>
+      <div id="gmail-widget-body">
+        <div class="google-widget-loading">Loading…</div>
+      </div>
+    </div>
+    <div class="google-widget">
+      <div class="google-widget-header">
+        <div class="google-widget-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          Google Calendar
+        </div>
+        <a id="calendar-signin-btn" href="/auth/google" class="google-signin-btn" style="display:none;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+          Connect Google
+        </a>
+      </div>
+      <div id="calendar-widget-body">
+        <div class="google-widget-loading">Loading…</div>
       </div>
     </div>
   </div>
@@ -2374,6 +2480,9 @@ function renderDashboard() {
     <div class="stat-box"><div class="stat-box-num" style="color:${(totalIncome*0.8)>=0?'#2ecc71':'#e74c3c'}">$${fmtNum(totalIncome*0.8)}</div><div class="stat-box-label">Net P&L (after tax)</div></div>
   `;
 
+  // Google widgets
+  loadGoogleWidgets();
+
   // Deal cards
   const grid = document.getElementById('active-deals-grid');
   grid.innerHTML = deals.map(d => `
@@ -2397,6 +2506,105 @@ function renderDashboard() {
     </div>
   `;
 }
+
+// ── Google Widgets ──────────────────────────────────────────────────────────
+
+async function loadGoogleWidgets() {
+  loadGmailWidget();
+  loadCalendarWidget();
+}
+
+async function loadGmailWidget() {
+  const body = document.getElementById('gmail-widget-body');
+  const btn  = document.getElementById('gmail-signin-btn');
+  if (!body) return;
+  try {
+    const r = await fetch('/api/google/gmail');
+    if (r.status === 401) {
+      btn.style.display = 'inline-flex';
+      body.innerHTML = '<div class="google-widget-empty">Connect your Google account to see your inbox.</div>';
+      return;
+    }
+    if (!r.ok) throw new Error('Server error');
+    btn.style.display = 'none';
+    const msgs = await r.json();
+    if (!msgs.length) {
+      body.innerHTML = '<div class="google-widget-empty">Inbox is empty.</div>';
+      return;
+    }
+    body.innerHTML = '<div class="google-widget-list">' + msgs.map(m => {
+      const from = m.from.replace(/<[^>]+>/g, '').trim();
+      const subject = m.subject || '(No subject)';
+      const snippet = m.snippet ? m.snippet.slice(0, 80) : '';
+      const d = m.date ? new Date(m.date) : null;
+      const timeStr = d ? (isToday(d) ? d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}) : d.toLocaleDateString('en-US',{month:'short',day:'numeric'})) : '';
+      return `<div class="google-widget-item">
+        <div class="google-widget-item-top">
+          <div class="google-widget-item-subject">${escHtml(subject)}</div>
+          <div class="google-widget-item-time">${timeStr}</div>
+        </div>
+        <div class="google-widget-item-from">${escHtml(from)}</div>
+        ${snippet ? `<div class="google-widget-item-snippet">${escHtml(snippet)}</div>` : ''}
+      </div>`;
+    }).join('') + '</div>';
+  } catch(e) {
+    body.innerHTML = '<div class="google-widget-empty" style="color:var(--danger)">Failed to load inbox.</div>';
+  }
+}
+
+async function loadCalendarWidget() {
+  const body = document.getElementById('calendar-widget-body');
+  const btn  = document.getElementById('calendar-signin-btn');
+  if (!body) return;
+  try {
+    const r = await fetch('/api/google/calendar');
+    if (r.status === 401) {
+      btn.style.display = 'inline-flex';
+      body.innerHTML = '<div class="google-widget-empty">Connect your Google account to see upcoming events.</div>';
+      return;
+    }
+    if (!r.ok) throw new Error('Server error');
+    btn.style.display = 'none';
+    const events = await r.json();
+    if (!events.length) {
+      body.innerHTML = '<div class="google-widget-empty">No upcoming events.</div>';
+      return;
+    }
+    body.innerHTML = '<div class="google-widget-list">' + events.map(e => {
+      const start = e.start ? new Date(e.start) : null;
+      const dateStr = start ? (e.allDay
+        ? start.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})
+        : start.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}) + ' · ' + start.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}))
+        : '';
+      return `<div class="google-widget-item">
+        <div class="google-widget-item-top">
+          <div class="google-widget-item-title">${escHtml(e.title)}</div>
+          <div class="google-widget-item-date">${dateStr}</div>
+        </div>
+        ${e.location ? `<div class="google-widget-item-loc">📍 ${escHtml(e.location)}</div>` : ''}
+      </div>`;
+    }).join('') + '</div>';
+  } catch(e) {
+    body.innerHTML = '<div class="google-widget-empty" style="color:var(--danger)">Failed to load calendar.</div>';
+  }
+}
+
+function isToday(d) {
+  const n = new Date();
+  return d.getFullYear()===n.getFullYear() && d.getMonth()===n.getMonth() && d.getDate()===n.getDate();
+}
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Show toast if returning from OAuth
+(function() {
+  const p = new URLSearchParams(window.location.search);
+  if (p.get('google_authed')) { toast('Google account connected ✓'); history.replaceState({}, '', '/'); }
+  if (p.get('google_error'))  { toast('Google sign-in failed — check credentials'); history.replaceState({}, '', '/'); }
+})();
+
+// ────────────────────────────────────────────────────────────────────────────
 
 function statusClass(s) {
   if(!s) return 'active';
