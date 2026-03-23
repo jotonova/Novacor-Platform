@@ -400,12 +400,16 @@ label {
   border-top: 1px solid var(--border);
 }
 .google-widget {
-  padding: 22px 28px;
+  height: 350px;
+  display: flex; flex-direction: column;
+  padding: 18px 24px 0;
   border-right: 1px solid var(--border);
+  overflow: hidden;
 }
 .google-widget:last-child { border-right: none; }
 .google-widget-header {
-  display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px; flex-shrink: 0;
 }
 .google-widget-title {
   display: flex; align-items: center; gap: 8px;
@@ -413,8 +417,15 @@ label {
   color: var(--gold); font-weight: 600;
 }
 .google-widget-title svg { flex-shrink: 0; }
+.google-widget-body {
+  flex: 1; overflow-y: auto; overflow-x: hidden;
+  padding-bottom: 12px;
+}
+.google-widget-body::-webkit-scrollbar { width: 4px; }
+.google-widget-body::-webkit-scrollbar-track { background: transparent; }
+.google-widget-body::-webkit-scrollbar-thumb { background: rgba(201,168,76,0.25); border-radius: 2px; }
 .google-signin-btn {
-  display: inline-flex; align-items: center; gap-8px;
+  display: inline-flex; align-items: center;
   background: var(--card-bg); border: 1px solid var(--border);
   color: var(--silver); border-radius: 4px;
   padding: 8px 16px; font-size: 0.78rem; font-family: 'Barlow Condensed', sans-serif;
@@ -425,7 +436,7 @@ label {
 .google-signin-btn:hover { border-color: var(--gold); color: var(--gold); }
 .google-widget-list { display: flex; flex-direction: column; gap: 1px; }
 .google-widget-item {
-  padding: 9px 10px; border-radius: 5px;
+  padding: 8px 10px; border-radius: 5px;
   transition: background 0.15s; cursor: default;
 }
 .google-widget-item:hover { background: rgba(255,255,255,0.04); }
@@ -459,11 +470,13 @@ label {
   font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;
 }
 .google-widget-empty {
-  padding: 28px 0; text-align: center; color: var(--text-muted); font-size: 0.82rem;
+  height: 100%; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 12px;
+  color: var(--text-muted); font-size: 0.82rem; text-align: center;
 }
 .google-widget-loading {
-  padding: 28px 0; text-align: center; color: var(--text-muted); font-size: 0.78rem;
-  letter-spacing: 0.08em;
+  height: 100%; display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted); font-size: 0.78rem; letter-spacing: 0.08em;
 }
 
 /* ─────────────────────────────────────────
@@ -1085,7 +1098,7 @@ label {
           Connect Google
         </a>
       </div>
-      <div id="gmail-widget-body">
+      <div class="google-widget-body" id="gmail-widget-body">
         <div class="google-widget-loading">Loading…</div>
       </div>
     </div>
@@ -1100,7 +1113,7 @@ label {
           Connect Google
         </a>
       </div>
-      <div id="calendar-widget-body">
+      <div class="google-widget-body" id="calendar-widget-body">
         <div class="google-widget-loading">Loading…</div>
       </div>
     </div>
@@ -2522,14 +2535,14 @@ async function loadGmailWidget() {
     const r = await fetch('/api/google/gmail');
     if (r.status === 401) {
       btn.style.display = 'inline-flex';
-      body.innerHTML = '<div class="google-widget-empty">Connect your Google account to see your inbox.</div>';
+      body.innerHTML = '<div class="google-widget-empty"><span>Connect your Google account<br>to see your inbox.</span></div>';
       return;
     }
     if (!r.ok) throw new Error('Server error');
     btn.style.display = 'none';
     const msgs = await r.json();
     if (!msgs.length) {
-      body.innerHTML = '<div class="google-widget-empty">Inbox is empty.</div>';
+      body.innerHTML = '<div class="google-widget-empty"><span>Inbox is empty.</span></div>';
       return;
     }
     body.innerHTML = '<div class="google-widget-list">' + msgs.map(m => {
@@ -2560,14 +2573,14 @@ async function loadCalendarWidget() {
     const r = await fetch('/api/google/calendar');
     if (r.status === 401) {
       btn.style.display = 'inline-flex';
-      body.innerHTML = '<div class="google-widget-empty">Connect your Google account to see upcoming events.</div>';
+      body.innerHTML = '<div class="google-widget-empty"><span>Connect your Google account<br>to see upcoming events.</span></div>';
       return;
     }
     if (!r.ok) throw new Error('Server error');
     btn.style.display = 'none';
     const events = await r.json();
     if (!events.length) {
-      body.innerHTML = '<div class="google-widget-empty">No upcoming events.</div>';
+      body.innerHTML = '<div class="google-widget-empty"><span>No upcoming events.</span></div>';
       return;
     }
     body.innerHTML = '<div class="google-widget-list">' + events.map(e => {
