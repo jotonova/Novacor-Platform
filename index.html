@@ -2451,14 +2451,30 @@ function switchPage(id) {
   if(id==='signs') renderSigns();
   if(id==='financials') renderFinancials();
   if(id==='conversionlab') {
+    // ── DEBUG: log scroll state before reset ──
+    console.log('window.scrollY:', window.scrollY);
+    console.log('document.body.scrollTop:', document.body.scrollTop);
+    console.log('document.documentElement.scrollTop:', document.documentElement.scrollTop);
+    console.log('page div scrollTop:', document.getElementById('page-conversionlab')?.scrollTop);
+    document.querySelectorAll('*').forEach(el => {
+      if (el.scrollTop > 0) console.log('SCROLLED ELEMENT:', el.tagName, el.id, el.className, el.scrollTop);
+    });
+    // ── Reset every possible scroll container ──
+    window.scrollTo({top: 0, behavior: 'instant'});
+    document.body.scrollTop = 0;
+    document.documentElement.scrollTop = 0;
+    document.getElementById('page-conversionlab').scrollTop = 0;
+    document.querySelector('.app-content')?.scrollTo(0, 0);
+    document.querySelector('#app')?.scrollTo(0, 0);
+    document.querySelector('main')?.scrollTo(0, 0);
+    document.querySelector('.content')?.scrollTo(0, 0);
+    // ── Reload iframe for clean top position ──
     const iframe = document.querySelector('#page-conversionlab iframe');
     if(iframe) {
       const src = 'https://novacor-conversion-lab.onrender.com';
       iframe.src = '';
       setTimeout(() => { iframe.src = src; }, 50);
     }
-    window.scrollTo(0, 0);
-    document.getElementById('page-conversionlab').scrollTop = 0;
   }
   if(id==='information') renderInformation();
 }
