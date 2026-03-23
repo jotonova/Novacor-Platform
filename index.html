@@ -511,9 +511,16 @@ label {
 .google-widget-item-delete:hover { color: #e05252; }
 .google-widget-item-clickable { cursor: pointer; }
 .google-widget-item-clickable:hover .google-widget-item-title { color: var(--gold-light); }
+.google-widget-item-clickable:hover .google-widget-item-subject { color: var(--gold-light); }
 .gcal-detail-row { margin-bottom: 12px; }
 .gcal-detail-label { font-size: 0.65rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 3px; }
 .gcal-detail-value { font-size: 0.9rem; color: var(--white); }
+.gmail-view-meta { display: grid; grid-template-columns: 60px 1fr; gap: 4px 10px; margin-bottom: 16px; }
+.gmail-view-meta-label { font-size: 0.65rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-muted); padding-top: 2px; }
+.gmail-view-meta-value { font-size: 0.82rem; color: var(--silver); word-break: break-word; }
+.gmail-view-subject { font-size: 1rem; font-weight: 600; color: var(--white); margin-bottom: 14px; line-height: 1.3; }
+.gmail-view-body { font-size: 0.82rem; color: var(--silver); white-space: pre-wrap; word-break: break-word; max-height: 340px; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius: 6px; padding: 12px 14px; line-height: 1.55; }
+.gmail-view-actions { display: flex; gap: 8px; margin-top: 16px; }
 
 /* ─────────────────────────────────────────
    QUAL-EFI — FULL ANALYZER
@@ -2595,14 +2602,14 @@ async function loadGmailWidget() {
       const snippet = m.snippet ? m.snippet.slice(0, 80) : '';
       const d = m.date ? new Date(m.date) : null;
       const timeStr = d ? (isToday(d) ? d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}) : d.toLocaleDateString('en-US',{month:'short',day:'numeric'})) : '';
-      return `<div class="google-widget-item">
+      return `<div class="google-widget-item google-widget-item-clickable" onclick="openGmailMessage('${escHtml(m.id)}')">
         <div class="google-widget-item-top">
           <div class="google-widget-item-subject">${escHtml(subject)}</div>
           <div class="google-widget-item-time">${timeStr}</div>
         </div>
         <div class="google-widget-item-from">${escHtml(from)}</div>
         ${snippet ? `<div class="google-widget-item-snippet">${escHtml(snippet)}</div>` : ''}
-        <button class="google-widget-item-delete" onclick="trashGmailMessage('${escHtml(m.id)}')" title="Move to trash">✕</button>
+        <button class="google-widget-item-delete" onclick="event.stopPropagation();trashGmailMessage('${escHtml(m.id)}')" title="Move to trash">✕</button>
       </div>`;
     }).join('') + '</div>';
   } catch(e) {
@@ -2621,12 +2628,68 @@ async function trashGmailMessage(id) {
   }
 }
 
-function openGmailCompose() {
-  document.getElementById('gmail-compose-to').value = '';
-  document.getElementById('gmail-compose-subject').value = '';
-  document.getElementById('gmail-compose-body').value = '';
+let currentGmailMessage = null;
+
+function openGmailCompose(to = '', subject = '', body = '') {
+  document.getElementById('gmail-compose-to').value = to;
+  document.getElementById('gmail-compose-subject').value = subject;
+  document.getElementById('gmail-compose-body').value = body;
   document.getElementById('gmail-compose-status').textContent = '';
   openModal('modal-gmail-compose');
+}
+
+async function openGmailMessage(id) {
+  currentGmailMessage = null;
+  const viewBody = document.getElementById('gmail-view-body');
+  const viewTitle = document.getElementById('gmail-view-modal-title');
+  viewTitle.textContent = 'Email';
+  viewBody.innerHTML = '<div class="google-widget-loading">Loading…</div>';
+  openModal('modal-gmail-view');
+  try {
+    const r = await fetch(`/api/google/gmail/${id}`);
+    if (!r.ok) throw new Error('Failed to load message');
+    const m = await r.json();
+    currentGmailMessage = m;
+    viewTitle.textContent = m.subject || '(No subject)';
+    const d = m.date ? new Date(m.date) : null;
+    const dateStr = d ? d.toLocaleString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' }) : '';
+    viewBody.innerHTML = `
+      <div class="gmail-view-subject">${escHtml(m.subject || '(No subject)')}</div>
+      <div class="gmail-view-meta">
+        <div class="gmail-view-meta-label">From</div><div class="gmail-view-meta-value">${escHtml(m.from)}</div>
+        <div class="gmail-view-meta-label">To</div><div class="gmail-view-meta-value">${escHtml(m.to)}</div>
+        <div class="gmail-view-meta-label">Date</div><div class="gmail-view-meta-value">${escHtml(dateStr)}</div>
+      </div>
+      <div class="gmail-view-body">${escHtml(m.body || '(No content)')}</div>
+      <div class="gmail-view-actions">
+        <button class="btn btn-gold" onclick="replyGmailMessage()">Reply</button>
+        <button class="btn btn-ghost" onclick="forwardGmailMessage()">Forward</button>
+        <button class="btn btn-ghost" style="margin-left:auto;" onclick="closeModal('modal-gmail-view')">Close</button>
+      </div>`;
+  } catch(e) {
+    viewBody.innerHTML = `<div style="color:var(--danger);font-size:0.85rem;">Failed to load message: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function replyGmailMessage() {
+  if (!currentGmailMessage) return;
+  const m = currentGmailMessage;
+  // Extract bare email address from "Name <email>" format
+  const toMatch = m.from.match(/<([^>]+)>/);
+  const to = toMatch ? toMatch[1] : m.from;
+  const subject = m.subject?.startsWith('Re: ') ? m.subject : `Re: ${m.subject || ''}`;
+  const quoted = `\n\n---\nOn ${m.date}, ${m.from} wrote:\n${(m.body || '').split('\n').map(l => '> ' + l).join('\n')}`;
+  closeModal('modal-gmail-view');
+  openGmailCompose(to, subject, quoted);
+}
+
+function forwardGmailMessage() {
+  if (!currentGmailMessage) return;
+  const m = currentGmailMessage;
+  const subject = m.subject?.startsWith('Fwd: ') ? m.subject : `Fwd: ${m.subject || ''}`;
+  const quoted = `\n\n---\n---------- Forwarded message ----------\nFrom: ${m.from}\nDate: ${m.date}\nSubject: ${m.subject}\n\n${m.body || ''}`;
+  closeModal('modal-gmail-view');
+  openGmailCompose('', subject, quoted);
 }
 
 async function sendGmail() {
@@ -4778,6 +4841,19 @@ qeRenderDealList();
     <button class="btn btn-gold" onclick="sendGmail()">Send</button>
     <button class="btn btn-ghost" onclick="closeModal('modal-gmail-compose')">Cancel</button>
     <span id="gmail-compose-status" style="font-size:0.78rem;color:var(--text-muted);margin-left:auto;"></span>
+  </div>
+</div>
+</div>
+
+<!-- Gmail View Modal -->
+<div class="modal-overlay hidden" id="modal-gmail-view">
+<div class="modal" style="max-width:640px;">
+  <div class="modal-header">
+    <div class="modal-title" id="gmail-view-modal-title">Email</div>
+    <button class="modal-close" onclick="closeModal('modal-gmail-view')">✕</button>
+  </div>
+  <div id="gmail-view-body">
+    <div class="google-widget-loading">Loading…</div>
   </div>
 </div>
 </div>

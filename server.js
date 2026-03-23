@@ -206,6 +206,54 @@ app.post('/api/google/gmail/send', async (req, res) => {
   }
 });
 
+// GET /api/google/gmail/:messageId — full message with body
+app.get('/api/google/gmail/:messageId', async (req, res) => {
+  try {
+    const auth = await getAuthedClient(req);
+    if (!auth) return res.status(401).json({ error: 'not_authenticated' });
+    const gmail = google.gmail({ version: 'v1', auth });
+    const msg = await gmail.users.messages.get({ userId: 'me', id: req.params.messageId, format: 'full' });
+    const h = (name) => (msg.data.payload?.headers || []).find(x => x.name === name)?.value || '';
+
+    // Recursively extract text/plain body; fall back to text/html with tags stripped
+    function extractBody(payload) {
+      if (payload.body?.data) {
+        return Buffer.from(payload.body.data, 'base64url').toString('utf-8');
+      }
+      if (payload.parts) {
+        for (const part of payload.parts) {
+          if (part.mimeType === 'text/plain' && part.body?.data)
+            return Buffer.from(part.body.data, 'base64url').toString('utf-8');
+        }
+        for (const part of payload.parts) {
+          if (part.mimeType === 'text/html' && part.body?.data) {
+            return Buffer.from(part.body.data, 'base64url').toString('utf-8')
+              .replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n\n')
+              .replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ')
+              .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim();
+          }
+        }
+        for (const part of payload.parts) {
+          if (part.parts) { const b = extractBody(part); if (b) return b; }
+        }
+      }
+      return '';
+    }
+
+    res.json({
+      id: msg.data.id,
+      from: h('From'),
+      to: h('To'),
+      subject: h('Subject'),
+      date: h('Date'),
+      body: extractBody(msg.data.payload),
+    });
+  } catch (e) {
+    console.error('[Gmail Get]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // DELETE /api/google/gmail/:messageId — move to trash
 app.delete('/api/google/gmail/:messageId', async (req, res) => {
   try {
