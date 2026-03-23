@@ -55,7 +55,9 @@ app.delete('/api/store/:key', async (req, res) => {
 
 const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
-  'https://www.googleapis.com/auth/calendar.readonly',
+  'https://www.googleapis.com/auth/gmail.send',
+  'https://www.googleapis.com/auth/gmail.modify',
+  'https://www.googleapis.com/auth/calendar',
 ];
 
 function makeOAuth2Client(req) {
@@ -172,6 +174,112 @@ app.get('/api/google/calendar', async (req, res) => {
     res.json(events);
   } catch (e) {
     console.error('[Calendar API]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/google/gmail/send — compose and send a message
+app.post('/api/google/gmail/send', async (req, res) => {
+  try {
+    const auth = await getAuthedClient(req);
+    if (!auth) return res.status(401).json({ error: 'not_authenticated' });
+
+    const { to, subject, body } = req.body;
+    if (!to || !subject) return res.status(400).json({ error: 'to and subject required' });
+
+    const raw = [
+      `To: ${to}`,
+      `Subject: ${subject}`,
+      'Content-Type: text/plain; charset=utf-8',
+      'MIME-Version: 1.0',
+      '',
+      body || '',
+    ].join('\r\n');
+
+    const encoded = Buffer.from(raw).toString('base64url');
+    const gmail = google.gmail({ version: 'v1', auth });
+    await gmail.users.messages.send({ userId: 'me', requestBody: { raw: encoded } });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[Gmail Send]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/google/gmail/:messageId — move to trash
+app.delete('/api/google/gmail/:messageId', async (req, res) => {
+  try {
+    const auth = await getAuthedClient(req);
+    if (!auth) return res.status(401).json({ error: 'not_authenticated' });
+    const gmail = google.gmail({ version: 'v1', auth });
+    await gmail.users.messages.trash({ userId: 'me', id: req.params.messageId });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[Gmail Trash]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/google/calendar/:eventId — single event detail
+app.get('/api/google/calendar/:eventId', async (req, res) => {
+  try {
+    const auth = await getAuthedClient(req);
+    if (!auth) return res.status(401).json({ error: 'not_authenticated' });
+    const cal = google.calendar({ version: 'v3', auth });
+    const r = await cal.events.get({ calendarId: 'primary', eventId: req.params.eventId });
+    const e = r.data;
+    res.json({
+      id: e.id,
+      title: e.summary || '(No title)',
+      start: e.start?.dateTime || e.start?.date,
+      end: e.end?.dateTime || e.end?.date,
+      location: e.location || null,
+      description: e.description || null,
+      allDay: !e.start?.dateTime,
+    });
+  } catch (e) {
+    console.error('[Calendar Get Event]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/google/calendar — create new event
+app.post('/api/google/calendar', async (req, res) => {
+  try {
+    const auth = await getAuthedClient(req);
+    if (!auth) return res.status(401).json({ error: 'not_authenticated' });
+
+    const { title, start, end, location, description } = req.body;
+    if (!title || !start || !end) return res.status(400).json({ error: 'title, start, end required' });
+
+    const cal = google.calendar({ version: 'v3', auth });
+    const r = await cal.events.insert({
+      calendarId: 'primary',
+      requestBody: {
+        summary: title,
+        start: { dateTime: start },
+        end: { dateTime: end },
+        ...(location ? { location } : {}),
+        ...(description ? { description } : {}),
+      },
+    });
+    res.json({ ok: true, id: r.data.id });
+  } catch (e) {
+    console.error('[Calendar Create]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/google/calendar/:eventId — delete event
+app.delete('/api/google/calendar/:eventId', async (req, res) => {
+  try {
+    const auth = await getAuthedClient(req);
+    if (!auth) return res.status(401).json({ error: 'not_authenticated' });
+    const cal = google.calendar({ version: 'v3', auth });
+    await cal.events.delete({ calendarId: 'primary', eventId: req.params.eventId });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[Calendar Delete]', e.message);
     res.status(500).json({ error: e.message });
   }
 });

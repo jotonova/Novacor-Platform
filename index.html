@@ -118,7 +118,7 @@ body {
 }
 .page { display: none; }
 .page.active { display: block; }
-#page-conversionlab.active { display: flex; }
+#page-conversionlab.active { display: flex; overflow: hidden; }
 
 /* ── COMMON COMPONENTS ── */
 .page-header {
@@ -401,10 +401,12 @@ label {
 }
 .google-widget {
   height: 350px;
+  max-height: 350px;
   display: flex; flex-direction: column;
   padding: 18px 24px 0;
   border-right: 1px solid var(--border);
   overflow: hidden;
+  box-sizing: border-box;
 }
 .google-widget:last-child { border-right: none; }
 .google-widget-header {
@@ -418,7 +420,9 @@ label {
 }
 .google-widget-title svg { flex-shrink: 0; }
 .google-widget-body {
-  flex: 1; overflow-y: auto; overflow-x: hidden;
+  flex: 1;
+  min-height: 0;       /* required: lets flex child shrink below content height */
+  overflow-y: auto; overflow-x: hidden;
   padding-bottom: 12px;
 }
 .google-widget-body::-webkit-scrollbar { width: 4px; }
@@ -478,6 +482,30 @@ label {
   height: 100%; display: flex; align-items: center; justify-content: center;
   color: var(--text-muted); font-size: 0.78rem; letter-spacing: 0.08em;
 }
+.google-action-btn {
+  display: none; align-items: center; gap: 5px;
+  background: transparent; border: 1px solid var(--border);
+  color: var(--silver); border-radius: 4px;
+  padding: 5px 10px; font-size: 0.7rem; font-family: 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.1em; text-transform: uppercase; font-weight: 600;
+  cursor: pointer; transition: all 0.2s;
+}
+.google-action-btn:hover { border-color: var(--gold); color: var(--gold); }
+.google-widget-item { position: relative; }
+.google-widget-item-delete {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  background: transparent; border: none; color: var(--text-muted);
+  font-size: 0.75rem; cursor: pointer; padding: 4px 6px; border-radius: 3px;
+  opacity: 0; transition: opacity 0.15s, color 0.15s;
+  line-height: 1;
+}
+.google-widget-item:hover .google-widget-item-delete { opacity: 1; }
+.google-widget-item-delete:hover { color: #e05252; }
+.google-widget-item-clickable { cursor: pointer; }
+.google-widget-item-clickable:hover .google-widget-item-title { color: var(--gold-light); }
+.gcal-detail-row { margin-bottom: 12px; }
+.gcal-detail-label { font-size: 0.65rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 3px; }
+.gcal-detail-value { font-size: 0.9rem; color: var(--white); }
 
 /* ─────────────────────────────────────────
    QUAL-EFI — FULL ANALYZER
@@ -1093,10 +1121,16 @@ label {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
           Gmail Inbox
         </div>
-        <a id="gmail-signin-btn" href="/auth/google" class="google-signin-btn" style="display:none;">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
-          Connect Google
-        </a>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button id="gmail-compose-btn" class="google-action-btn" onclick="openGmailCompose()">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
+            Compose
+          </button>
+          <a id="gmail-signin-btn" href="/auth/google" class="google-signin-btn" style="display:none;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+            Connect Google
+          </a>
+        </div>
       </div>
       <div class="google-widget-body" id="gmail-widget-body">
         <div class="google-widget-loading">Loading…</div>
@@ -1108,10 +1142,16 @@ label {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           Google Calendar
         </div>
-        <a id="calendar-signin-btn" href="/auth/google" class="google-signin-btn" style="display:none;">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
-          Connect Google
-        </a>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button id="calendar-add-btn" class="google-action-btn" onclick="openCalendarAdd()">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Event
+          </button>
+          <a id="calendar-signin-btn" href="/auth/google" class="google-signin-btn" style="display:none;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+            Connect Google
+          </a>
+        </div>
       </div>
       <div class="google-widget-body" id="calendar-widget-body">
         <div class="google-widget-loading">Loading…</div>
@@ -2412,15 +2452,8 @@ function switchPage(id) {
   if(id==='financials') renderFinancials();
   if(id==='conversionlab') {
     window.scrollTo(0,0);
-    document.getElementById('app').scrollTop = 0;
-    const el = document.getElementById('page-conversionlab'); if(el) el.scrollTop = 0;
-    const f = document.querySelector('#page-conversionlab iframe'); if(f) try { f.contentWindow.scrollTo(0,0); } catch(e) {}
-    setTimeout(() => {
-      const page = document.getElementById('page-conversionlab');
-      if(page) page.scrollTop = 0;
-      window.scrollTo(0, 0);
-      document.querySelector('.app-content, #app, main')?.scrollTo(0, 0);
-    }, 50);
+    const iframe = document.querySelector('#page-conversionlab iframe');
+    if(iframe) { iframe.src = iframe.src; }
   }
   if(id==='information') renderInformation();
 }
@@ -2529,17 +2562,20 @@ async function loadGoogleWidgets() {
 
 async function loadGmailWidget() {
   const body = document.getElementById('gmail-widget-body');
-  const btn  = document.getElementById('gmail-signin-btn');
+  const signinBtn  = document.getElementById('gmail-signin-btn');
+  const composeBtn = document.getElementById('gmail-compose-btn');
   if (!body) return;
   try {
     const r = await fetch('/api/google/gmail');
     if (r.status === 401) {
-      btn.style.display = 'inline-flex';
+      signinBtn.style.display = 'inline-flex';
+      composeBtn.style.display = 'none';
       body.innerHTML = '<div class="google-widget-empty"><span>Connect your Google account<br>to see your inbox.</span></div>';
       return;
     }
     if (!r.ok) throw new Error('Server error');
-    btn.style.display = 'none';
+    signinBtn.style.display = 'none';
+    composeBtn.style.display = 'inline-flex';
     const msgs = await r.json();
     if (!msgs.length) {
       body.innerHTML = '<div class="google-widget-empty"><span>Inbox is empty.</span></div>';
@@ -2558,6 +2594,7 @@ async function loadGmailWidget() {
         </div>
         <div class="google-widget-item-from">${escHtml(from)}</div>
         ${snippet ? `<div class="google-widget-item-snippet">${escHtml(snippet)}</div>` : ''}
+        <button class="google-widget-item-delete" onclick="trashGmailMessage('${escHtml(m.id)}')" title="Move to trash">✕</button>
       </div>`;
     }).join('') + '</div>';
   } catch(e) {
@@ -2565,19 +2602,63 @@ async function loadGmailWidget() {
   }
 }
 
+async function trashGmailMessage(id) {
+  try {
+    const r = await fetch(`/api/google/gmail/${id}`, { method: 'DELETE' });
+    if (!r.ok) throw new Error('Failed');
+    toast('Message moved to trash');
+    loadGmailWidget();
+  } catch(e) {
+    toast('Failed to delete message');
+  }
+}
+
+function openGmailCompose() {
+  document.getElementById('gmail-compose-to').value = '';
+  document.getElementById('gmail-compose-subject').value = '';
+  document.getElementById('gmail-compose-body').value = '';
+  document.getElementById('gmail-compose-status').textContent = '';
+  openModal('modal-gmail-compose');
+}
+
+async function sendGmail() {
+  const to      = document.getElementById('gmail-compose-to').value.trim();
+  const subject = document.getElementById('gmail-compose-subject').value.trim();
+  const body    = document.getElementById('gmail-compose-body').value.trim();
+  const status  = document.getElementById('gmail-compose-status');
+  if (!to || !subject) { status.textContent = 'To and Subject are required.'; return; }
+  status.textContent = 'Sending…';
+  try {
+    const r = await fetch('/api/google/gmail/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to, subject, body }),
+    });
+    if (!r.ok) { const d = await r.json(); throw new Error(d.error || 'Send failed'); }
+    closeModal('modal-gmail-compose');
+    toast('Email sent ✓');
+    loadGmailWidget();
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+  }
+}
+
 async function loadCalendarWidget() {
   const body = document.getElementById('calendar-widget-body');
-  const btn  = document.getElementById('calendar-signin-btn');
+  const signinBtn = document.getElementById('calendar-signin-btn');
+  const addBtn    = document.getElementById('calendar-add-btn');
   if (!body) return;
   try {
     const r = await fetch('/api/google/calendar');
     if (r.status === 401) {
-      btn.style.display = 'inline-flex';
+      signinBtn.style.display = 'inline-flex';
+      addBtn.style.display = 'none';
       body.innerHTML = '<div class="google-widget-empty"><span>Connect your Google account<br>to see upcoming events.</span></div>';
       return;
     }
     if (!r.ok) throw new Error('Server error');
-    btn.style.display = 'none';
+    signinBtn.style.display = 'none';
+    addBtn.style.display = 'inline-flex';
     const events = await r.json();
     if (!events.length) {
       body.innerHTML = '<div class="google-widget-empty"><span>No upcoming events.</span></div>';
@@ -2589,16 +2670,111 @@ async function loadCalendarWidget() {
         ? start.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})
         : start.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}) + ' · ' + start.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}))
         : '';
-      return `<div class="google-widget-item">
+      return `<div class="google-widget-item google-widget-item-clickable" onclick="viewCalendarEvent('${escHtml(e.id)}')">
         <div class="google-widget-item-top">
           <div class="google-widget-item-title">${escHtml(e.title)}</div>
           <div class="google-widget-item-date">${dateStr}</div>
         </div>
         ${e.location ? `<div class="google-widget-item-loc">📍 ${escHtml(e.location)}</div>` : ''}
+        <button class="google-widget-item-delete" onclick="event.stopPropagation();deleteCalendarEvent('${escHtml(e.id)}')" title="Delete event">✕</button>
       </div>`;
     }).join('') + '</div>';
   } catch(e) {
     body.innerHTML = '<div class="google-widget-empty" style="color:var(--danger)">Failed to load calendar.</div>';
+  }
+}
+
+let _calDetailEventId = null;
+
+async function viewCalendarEvent(id) {
+  try {
+    const r = await fetch(`/api/google/calendar/${id}`);
+    if (!r.ok) throw new Error('Failed to load event');
+    const e = await r.json();
+    _calDetailEventId = e.id;
+    document.getElementById('cal-detail-title').textContent = e.title;
+    const start = e.start ? new Date(e.start) : null;
+    const end   = e.end   ? new Date(e.end)   : null;
+    const fmtDT = dt => dt ? (e.allDay
+      ? dt.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})
+      : dt.toLocaleString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}))
+      : '';
+    let html = '';
+    if (start) {
+      html += `<div class="gcal-detail-row"><div class="gcal-detail-label">When</div><div class="gcal-detail-value">${fmtDT(start)}${end && !e.allDay ? ' – ' + end.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}) : ''}</div></div>`;
+    }
+    if (e.location) {
+      html += `<div class="gcal-detail-row"><div class="gcal-detail-label">Location</div><div class="gcal-detail-value">${escHtml(e.location)}</div></div>`;
+    }
+    if (e.description) {
+      html += `<div class="gcal-detail-row"><div class="gcal-detail-label">Description</div><div class="gcal-detail-value" style="white-space:pre-wrap;font-size:0.82rem;color:var(--silver);">${escHtml(e.description)}</div></div>`;
+    }
+    document.getElementById('cal-detail-body').innerHTML = html || '<div style="color:var(--text-muted);font-size:0.85rem;">No additional details.</div>';
+    openModal('modal-calendar-detail');
+  } catch(e) {
+    toast('Failed to load event details');
+  }
+}
+
+async function deleteCalendarEventFromDetail() {
+  if (!_calDetailEventId) return;
+  await deleteCalendarEvent(_calDetailEventId);
+  closeModal('modal-calendar-detail');
+}
+
+async function deleteCalendarEvent(id) {
+  try {
+    const r = await fetch(`/api/google/calendar/${id}`, { method: 'DELETE' });
+    if (!r.ok) throw new Error('Failed');
+    toast('Event deleted');
+    loadCalendarWidget();
+  } catch(e) {
+    toast('Failed to delete event');
+  }
+}
+
+function openCalendarAdd() {
+  const today = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  const dateStr = `${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`;
+  const h = today.getHours(); const m = today.getMinutes();
+  const startStr = `${pad(h)}:${pad(m < 30 ? 30 : 0)}`;
+  const endH = m < 30 ? h : h + 1;
+  const endStr = `${pad(endH)}:${pad(m < 30 ? 0 : 30)}`;
+  document.getElementById('cal-add-title').value = '';
+  document.getElementById('cal-add-date').value = dateStr;
+  document.getElementById('cal-add-start-time').value = startStr;
+  document.getElementById('cal-add-end-time').value = endStr;
+  document.getElementById('cal-add-location').value = '';
+  document.getElementById('cal-add-description').value = '';
+  document.getElementById('cal-add-status').textContent = '';
+  openModal('modal-calendar-add');
+}
+
+async function createCalendarEvent() {
+  const title       = document.getElementById('cal-add-title').value.trim();
+  const date        = document.getElementById('cal-add-date').value;
+  const startTime   = document.getElementById('cal-add-start-time').value;
+  const endTime     = document.getElementById('cal-add-end-time').value;
+  const location    = document.getElementById('cal-add-location').value.trim();
+  const description = document.getElementById('cal-add-description').value.trim();
+  const status      = document.getElementById('cal-add-status');
+  if (!title || !date || !startTime || !endTime) { status.textContent = 'Title, date, and times are required.'; return; }
+  const start = new Date(`${date}T${startTime}`).toISOString();
+  const end   = new Date(`${date}T${endTime}`).toISOString();
+  status.textContent = 'Adding…';
+  try {
+    const r = await fetch('/api/google/calendar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, start, end, location: location || undefined, description: description || undefined }),
+    });
+    if (!r.ok) { const d = await r.json(); throw new Error(d.error || 'Failed'); }
+    closeModal('modal-calendar-add');
+    toast('Event added ✓');
+    loadCalendarWidget();
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
   }
 }
 
@@ -4579,6 +4755,64 @@ qeCalcWholesale();
 qeRenderDealList();
 })();
 </script>
+
+<!-- Gmail Compose Modal -->
+<div class="modal-overlay hidden" id="modal-gmail-compose">
+<div class="modal" style="max-width:560px;">
+  <div class="modal-header">
+    <div class="modal-title">Compose Email</div>
+    <button class="modal-close" onclick="closeModal('modal-gmail-compose')">✕</button>
+  </div>
+  <div class="form-group"><label>To</label><input type="email" id="gmail-compose-to" placeholder="recipient@example.com"></div>
+  <div class="form-group"><label>Subject</label><input type="text" id="gmail-compose-subject" placeholder="Subject"></div>
+  <div class="form-group"><label>Message</label><textarea id="gmail-compose-body" rows="6" placeholder="Write your message…"></textarea></div>
+  <div style="display:flex;gap:10px;align-items:center;">
+    <button class="btn btn-gold" onclick="sendGmail()">Send</button>
+    <button class="btn btn-ghost" onclick="closeModal('modal-gmail-compose')">Cancel</button>
+    <span id="gmail-compose-status" style="font-size:0.78rem;color:var(--text-muted);margin-left:auto;"></span>
+  </div>
+</div>
+</div>
+
+<!-- Calendar Add Event Modal -->
+<div class="modal-overlay hidden" id="modal-calendar-add">
+<div class="modal" style="max-width:500px;">
+  <div class="modal-header">
+    <div class="modal-title">Add Event</div>
+    <button class="modal-close" onclick="closeModal('modal-calendar-add')">✕</button>
+  </div>
+  <div class="form-group"><label>Title</label><input type="text" id="cal-add-title" placeholder="Event title"></div>
+  <div class="form-row form-row-2">
+    <div class="form-group"><label>Date</label><input type="date" id="cal-add-date"></div>
+    <div class="form-group"><label>Start Time</label><input type="time" id="cal-add-start-time"></div>
+  </div>
+  <div class="form-row form-row-2">
+    <div class="form-group"><label>End Time</label><input type="time" id="cal-add-end-time"></div>
+    <div class="form-group"><label>Location (optional)</label><input type="text" id="cal-add-location" placeholder="Address or room"></div>
+  </div>
+  <div class="form-group"><label>Description (optional)</label><textarea id="cal-add-description" rows="3" placeholder="Notes…"></textarea></div>
+  <div style="display:flex;gap:10px;align-items:center;">
+    <button class="btn btn-gold" onclick="createCalendarEvent()">Add Event</button>
+    <button class="btn btn-ghost" onclick="closeModal('modal-calendar-add')">Cancel</button>
+    <span id="cal-add-status" style="font-size:0.78rem;color:var(--text-muted);margin-left:auto;"></span>
+  </div>
+</div>
+</div>
+
+<!-- Calendar Event Detail Modal -->
+<div class="modal-overlay hidden" id="modal-calendar-detail">
+<div class="modal" style="max-width:480px;">
+  <div class="modal-header">
+    <div class="modal-title" id="cal-detail-title">Event</div>
+    <button class="modal-close" onclick="closeModal('modal-calendar-detail')">✕</button>
+  </div>
+  <div id="cal-detail-body" style="margin-bottom:22px;"></div>
+  <div style="display:flex;gap:10px;">
+    <button class="btn btn-ghost" style="color:#e05252;border-color:rgba(224,82,82,0.3);" onclick="deleteCalendarEventFromDetail()">Delete Event</button>
+    <button class="btn btn-ghost" onclick="closeModal('modal-calendar-detail')">Close</button>
+  </div>
+</div>
+</div>
 
 <div id="page-conversionlab" class="page" style="height:calc(100vh - 64px);flex-direction:column;">
   <iframe
