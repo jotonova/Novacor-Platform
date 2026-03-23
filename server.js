@@ -94,6 +94,12 @@ async function getAuthedClient(req) {
   return auth;
 }
 
+// GET /auth/google/revoke — clear stored token and force re-authorization
+app.get('/auth/google/revoke', async (req, res) => {
+  await db.execute({ sql: 'DELETE FROM kv WHERE key=?', args: ['google_tokens'] });
+  res.redirect('/auth/google');
+});
+
 // GET /auth/google — redirect to consent screen
 app.get('/auth/google', (req, res) => {
   const auth = makeOAuth2Client(req);
