@@ -126,14 +126,19 @@ app.get('/auth/google/callback', async (req, res) => {
   }
 });
 
-// GET /api/google/gmail — last 10 inbox messages
+// GET /api/google/gmail — last 25 inbox messages (fresh, no cache, excludes trash/spam)
 app.get('/api/google/gmail', async (req, res) => {
   try {
     const auth = await getAuthedClient(req);
     if (!auth) return res.status(401).json({ error: 'not_authenticated' });
 
     const gmail = google.gmail({ version: 'v1', auth });
-    const list = await gmail.users.messages.list({ userId: 'me', labelIds: ['INBOX'], maxResults: 10 });
+    const list = await gmail.users.messages.list({
+      userId: 'me',
+      labelIds: ['INBOX'],
+      q: '-in:trash -in:spam',
+      maxResults: 25,
+    });
     const msgs = list.data.messages || [];
 
     const details = await Promise.all(msgs.map(async (m) => {
