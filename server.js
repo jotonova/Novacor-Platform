@@ -136,7 +136,7 @@ app.get('/api/google/gmail', async (req, res) => {
     const list = await gmail.users.messages.list({
       userId: 'me',
       labelIds: ['INBOX'],
-      q: 'in:inbox -in:trash -in:spam -in:archive',
+      q: 'in:inbox category:primary -in:trash -in:spam',
       includeSpamTrash: false,
       maxResults: 25,
     });
