@@ -3,10 +3,163 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { google } from 'googleapis';
+import { createHmac } from 'crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// ── Passcode auth ─────────────────────────────────────────────────────────────
+
+const PASSCODE   = process.env.PLATFORM_PASSCODE || '0000';
+const COOKIE_SECRET = process.env.COOKIE_SECRET || 'novacor-platform-secret';
+const COOKIE_NAME   = 'platform_auth';
+const COOKIE_TTL    = 60 * 60 * 24; // 24 hours in seconds
+
+function makeToken() {
+  return createHmac('sha256', COOKIE_SECRET).update(PASSCODE).digest('hex');
+}
+
+function getCookie(req, name) {
+  for (const part of (req.headers.cookie || '').split(';')) {
+    const [k, ...v] = part.trim().split('=');
+    if (k.trim() === name) return v.join('=');
+  }
+  return null;
+}
+
+function isAuthenticated(req) {
+  return getCookie(req, COOKIE_NAME) === makeToken();
+}
+
+function requireAuth(req, res, next) {
+  if (isAuthenticated(req)) return next();
+  // API routes → 401 JSON; page requests → redirect to /auth
+  if (req.path.startsWith('/api/') || req.path.startsWith('/auth/google')) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  res.redirect('/auth');
+}
+
+const PASSCODE_PAGE = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Novacor Platform — Login</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #060d1a;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      color: #c8d6e5;
+    }
+    .gate {
+      width: 100%;
+      max-width: 360px;
+      padding: 48px 36px 40px;
+      background: #0a1628;
+      border: 1px solid rgba(212,175,55,0.18);
+      border-radius: 12px;
+      text-align: center;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+    }
+    .logo {
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: .04em;
+      color: #d4af37;
+      margin-bottom: 6px;
+    }
+    .logo span { color: #c8d6e5; font-weight: 300; }
+    .subtitle {
+      font-size: 0.8rem;
+      color: #4a6080;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      margin-bottom: 36px;
+    }
+    input[type=password], input[type=text] {
+      width: 100%;
+      padding: 12px 16px;
+      background: #060d1a;
+      border: 1px solid rgba(212,175,55,0.25);
+      border-radius: 6px;
+      color: #c8d6e5;
+      font-size: 1.1rem;
+      letter-spacing: .2em;
+      text-align: center;
+      outline: none;
+      margin-bottom: 14px;
+      transition: border-color .2s;
+    }
+    input:focus { border-color: #d4af37; }
+    button {
+      width: 100%;
+      padding: 12px;
+      background: #d4af37;
+      border: none;
+      border-radius: 6px;
+      color: #060d1a;
+      font-size: 0.95rem;
+      font-weight: 700;
+      letter-spacing: .04em;
+      cursor: pointer;
+      transition: opacity .2s;
+    }
+    button:hover { opacity: .88; }
+    .error {
+      margin-top: 14px;
+      font-size: 0.82rem;
+      color: #e74c3c;
+      min-height: 1.2em;
+    }
+  </style>
+</head>
+<body>
+  <div class="gate">
+    <div class="logo">NOVA<span>COR</span></div>
+    <div class="subtitle">Platform Access</div>
+    <form method="POST" action="/auth/passcode">
+      <input type="password" name="passcode" placeholder="Enter PIN" autofocus autocomplete="off" maxlength="32">
+      <button type="submit">Enter</button>
+    </form>
+    <div class="error">{{ERROR}}</div>
+  </div>
+</body>
+</html>`;
+
+// ── Auth routes (public — no requireAuth) ─────────────────────────────────────
+
 const app = express();
 app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
+
+app.get('/auth', (req, res) => {
+  if (isAuthenticated(req)) return res.redirect('/');
+  res.send(PASSCODE_PAGE.replace('{{ERROR}}', ''));
+});
+
+app.post('/auth/passcode', (req, res) => {
+  const submitted = (req.body.passcode || '').trim();
+  if (submitted === PASSCODE) {
+    const token = makeToken();
+    res.setHeader('Set-Cookie',
+      `${COOKIE_NAME}=${token}; HttpOnly; Path=/; Max-Age=${COOKIE_TTL}; SameSite=Strict`);
+    return res.redirect('/');
+  }
+  res.send(PASSCODE_PAGE.replace('{{ERROR}}', 'Incorrect passcode. Try again.'));
+});
+
+app.get('/auth/logout', (req, res) => {
+  res.setHeader('Set-Cookie', `${COOKIE_NAME}=; HttpOnly; Path=/; Max-Age=0`);
+  res.redirect('/auth');
+});
+
+// ── All routes below require auth ─────────────────────────────────────────────
+app.use(requireAuth);
 app.use(express.static(__dirname));
 
 const db = createClient({
