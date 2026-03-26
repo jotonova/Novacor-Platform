@@ -158,6 +158,51 @@ app.get('/auth/logout', (req, res) => {
   res.redirect('/auth');
 });
 
+// ── CRM lead import — server-to-server, authenticated via X-Platform-Secret ───
+// Placed before requireAuth so it doesn't need a browser cookie.
+app.post('/api/crm/contacts', async (req, res) => {
+  const secret = process.env.PLATFORM_API_SECRET || '';
+  if (!secret || req.headers['x-platform-secret'] !== secret) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const { name, phone, email, address, type, source, ai_score, motivation_tags, equity, value, notes } = req.body;
+  if (!name) return res.status(400).json({ error: 'name is required' });
+
+  // Load existing contacts from KV store (client uses 'nc_' prefix)
+  let contacts = [];
+  try {
+    const r = await db.execute({ sql: 'SELECT value FROM kv WHERE key=?', args: ['nc_crm_contacts'] });
+    if (r.rows.length) contacts = JSON.parse(r.rows[0].value);
+  } catch {}
+
+  const contact = {
+    id: `clab_${Date.now()}`,
+    name,
+    type:   type   || 'Lead',
+    source: source || 'conversion_lab',
+    phone:  phone  || '',
+    email:  email  || '',
+    address: address || '',
+    status: 'Active',
+    ai_score:        ai_score        ?? null,
+    motivation_tags: motivation_tags ?? '[]',
+    equity:          equity          ?? null,
+    value:           value           ?? null,
+    notes:           notes           || '',
+    added: new Date().toISOString().slice(0, 10),
+  };
+
+  contacts.push(contact);
+
+  await db.execute({
+    sql: 'INSERT INTO kv (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',
+    args: ['nc_crm_contacts', JSON.stringify(contacts)],
+  });
+
+  res.json({ ok: true, id: contact.id });
+});
+
 // ── All routes below require auth ─────────────────────────────────────────────
 app.use(requireAuth);
 app.use(express.static(__dirname));

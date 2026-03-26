@@ -860,6 +860,23 @@ label {
 .crm-name { font-weight: 600; font-size: 0.95rem; }
 .crm-detail { font-size: 0.8rem; color: var(--silver); margin: 3px 0; display: flex; align-items: center; gap: 6px; }
 .crm-notes { font-size: 0.78rem; color: var(--text-muted); margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px; font-style: italic; }
+/* Lead cards from Conversion Lab are wider and have extra data rows */
+.crm-card-lead { border-color: rgba(212,175,55,0.25); grid-column: span 1; }
+.crm-card-lead:hover { border-color: var(--gold); }
+.crm-score-badge { display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px; border-radius:50%; font-weight:700; font-size:0.95rem; flex-shrink:0; }
+.crm-score-hot  { background:rgba(231,76,60,0.2);  color:#e74c3c; border:1px solid rgba(231,76,60,0.4); }
+.crm-score-warm { background:rgba(212,175,55,0.2); color:var(--gold); border:1px solid rgba(212,175,55,0.4); }
+.crm-score-cold { background:rgba(74,96,128,0.3);  color:var(--silver); border:1px solid var(--border); }
+.crm-tag { display:inline-block; padding:2px 7px; border-radius:10px; font-size:0.65rem; font-weight:600; letter-spacing:.04em; text-transform:uppercase; margin:2px 2px 2px 0; background:rgba(74,96,128,0.3); color:var(--silver); }
+.crm-tag-foreclosure { background:rgba(231,76,60,0.2);  color:#e98080; }
+.crm-tag-delinquent  { background:rgba(230,126,34,0.2); color:#f0a070; }
+.crm-tag-vacant      { background:rgba(155,89,182,0.2); color:#c39bd3; }
+.crm-tag-absentee    { background:rgba(52,152,219,0.2); color:#85c1e9; }
+.crm-tag-equity      { background:rgba(39,174,96,0.2);  color:#82e0aa; }
+.crm-lead-stats { display:flex; gap:10px; margin:10px 0 6px; }
+.crm-lead-stat { flex:1; background:rgba(13,31,60,0.6); border:1px solid var(--border); border-radius:6px; padding:6px 8px; text-align:center; }
+.crm-lead-stat-val { font-size:0.9rem; font-weight:700; color:var(--gold); }
+.crm-lead-stat-lbl { font-size:0.6rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:.06em; margin-top:1px; }
 
 /* ─────────────────────────────────────────
    SIGN TRACKING
@@ -4223,20 +4240,67 @@ function saveContact() {
 }
 
 function filterCRM(f, btn) {
-  crmFilter=f;
+  crmFilter = f;
   document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
   renderCRM();
 }
 
+function crmTypeMatch(contact, filter) {
+  if(filter === 'all') return true;
+  return (contact.type||'').toLowerCase() === filter.toLowerCase();
+}
+
+function crmLeadCard(c) {
+  const score = Number(c.ai_score) || 0;
+  const scoreClass = score >= 70 ? 'crm-score-hot' : score >= 40 ? 'crm-score-warm' : 'crm-score-cold';
+  let tags = [];
+  try { tags = JSON.parse(c.motivation_tags || '[]'); } catch {}
+  const tagClass = t => {
+    if(t.includes('foreclosure')) return 'crm-tag crm-tag-foreclosure';
+    if(t.includes('delinquent'))  return 'crm-tag crm-tag-delinquent';
+    if(t.includes('vacant'))      return 'crm-tag crm-tag-vacant';
+    if(t.includes('absentee'))    return 'crm-tag crm-tag-absentee';
+    if(t.includes('equity'))      return 'crm-tag crm-tag-equity';
+    return 'crm-tag';
+  };
+  const fmt$ = v => v ? '$' + Number(v).toLocaleString() : '—';
+  const fmtPct = v => v != null ? Number(v).toFixed(1) + '%' : '—';
+  return `
+    <div class="crm-card crm-card-lead">
+      <div class="crm-card-header">
+        <div style="flex:1;min-width:0;">
+          <div class="crm-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.name}</div>
+          <div class="crm-detail" style="margin-top:3px;">📍 ${c.address||'—'}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;margin-left:10px;">
+          <div class="crm-score-badge ${scoreClass}">${score||'—'}</div>
+          <button class="btn btn-sm btn-ghost" onclick="deleteCRMContact('${c.id}')" style="padding:2px 7px;font-size:0.65rem;">✕</button>
+        </div>
+      </div>
+      <div class="crm-lead-stats">
+        <div class="crm-lead-stat"><div class="crm-lead-stat-val">${fmt$(c.value)}</div><div class="crm-lead-stat-lbl">Est. Value</div></div>
+        <div class="crm-lead-stat"><div class="crm-lead-stat-val">${fmtPct(c.equity)}</div><div class="crm-lead-stat-lbl">Equity</div></div>
+        <div class="crm-lead-stat"><div class="crm-lead-stat-val" style="font-size:0.72rem;color:var(--silver);">${c.source||'—'}</div><div class="crm-lead-stat-lbl">Source</div></div>
+      </div>
+      ${c.phone ? `<div class="crm-detail">📞 <a href="tel:${c.phone}" class="phone-link">${c.phone}</a></div>` : ''}
+      ${c.email ? `<div class="crm-detail">✉️ <a href="mailto:${c.email}" class="phone-link">${c.email}</a></div>` : ''}
+      ${tags.length ? `<div style="margin:8px 0 4px;">${tags.map(t=>`<span class="${tagClass(t)}">${t.replace(/_/g,' ')}</span>`).join('')}</div>` : ''}
+      ${c.notes ? `<div class="crm-notes">${c.notes}</div>` : ''}
+      <div style="font-size:0.68rem;color:var(--text-muted);margin-top:8px;">Added ${c.added||'—'}</div>
+    </div>`;
+}
+
 function renderCRM() {
   let contacts = load('crm_contacts',[]);
-  if(crmFilter!=='all') contacts=contacts.filter(c=>c.type===crmFilter);
+  if(crmFilter!=='all') contacts=contacts.filter(c=>crmTypeMatch(c,crmFilter));
   const grid = document.getElementById('crm-grid');
   if(!grid) return;
   if(!contacts.length) { grid.innerHTML='<div style="color:var(--text-muted);">No contacts yet. Add your first!</div>'; return; }
   const typeBadge={Seller:'badge-invested',Buyer:'badge-active',Partner:'badge-closed',Lead:'badge-pending',Agent:'badge-active'};
-  grid.innerHTML = contacts.map(c=>`
+  grid.innerHTML = contacts.map(c => {
+    if(c.type === 'lead' || c.type === 'Lead') return crmLeadCard(c);
+    return `
     <div class="crm-card">
       <div class="crm-card-header">
         <div>
@@ -4253,7 +4317,8 @@ function renderCRM() {
       ${c.address ? `<div class="crm-detail">📍 ${c.address}</div>` : ''}
       ${c.notes ? `<div class="crm-notes">${c.notes}</div>` : ''}
       <div style="font-size:0.68rem;color:var(--text-muted);margin-top:8px;">Added ${c.added||'—'}</div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function deleteCRMContact(id) {
