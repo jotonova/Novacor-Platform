@@ -1765,6 +1765,27 @@ label {
         <div class="info-item"><div class="info-item-label">Deal Analyzer</div><div class="info-item-value"><a href="https://qual-efi.com" class="vault-link" target="_blank">Qual-Efi.com</a></div></div>
       </div>
       <button class="btn btn-outline btn-sm" style="margin-top:14px;" onclick="openModal('modal-info-edit')">Edit Details</button>
+
+      <!-- Documents & Photos -->
+      <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:14px;">
+        <div style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Documents &amp; Photos</div>
+        <div style="display:flex;gap:8px;margin-bottom:12px;">
+          <label style="flex:1;cursor:pointer;">
+            <div class="upload-area" style="padding:12px 8px;font-size:0.8rem;text-align:center;">
+              <div class="upload-area-icon">📷</div><div>Photos</div>
+            </div>
+            <input type="file" id="co-photo-input" style="display:none" accept="image/*" multiple onchange="addCompanyImages(event)">
+          </label>
+          <label style="flex:1;cursor:pointer;">
+            <div class="upload-area" style="padding:12px 8px;font-size:0.8rem;text-align:center;">
+              <div class="upload-area-icon">📎</div><div>Docs</div>
+            </div>
+            <input type="file" id="co-file-input" style="display:none" multiple onchange="addCompanyFiles(event)">
+          </label>
+        </div>
+        <div id="co-photo-gallery" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;"></div>
+        <div id="co-file-list"></div>
+      </div>
     </div>
 
     <div class="info-card">
@@ -3936,6 +3957,80 @@ function renderInformation() {
         ` + extra.join('');
     }
   }
+  renderCompanyFiles();
+}
+
+function addCompanyImages(e) {
+  const files = Array.from(e.target.files);
+  const images = load('info_company_images', []);
+  let loaded = 0;
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = r => {
+      images.push({ name: file.name, data: r.target.result });
+      loaded++;
+      if (loaded === files.length) { save('info_company_images', images); renderCompanyFiles(); toast('📷 Photo uploaded!'); }
+    };
+    reader.readAsDataURL(file);
+  });
+  e.target.value = '';
+}
+
+function addCompanyFiles(e) {
+  const files = Array.from(e.target.files);
+  const docs = load('info_company_files', []);
+  let loaded = 0;
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = r => {
+      docs.push({ name: file.name, data: r.target.result, type: file.type });
+      loaded++;
+      if (loaded === files.length) { save('info_company_files', docs); renderCompanyFiles(); toast('📎 Document uploaded!'); }
+    };
+    reader.readAsDataURL(file);
+  });
+  e.target.value = '';
+}
+
+function renderCompanyFiles() {
+  const images = load('info_company_images', []);
+  const docs   = load('info_company_files', []);
+
+  const gallery = document.getElementById('co-photo-gallery');
+  if (gallery) {
+    gallery.innerHTML = images.map((img, i) =>
+      `<div style="position:relative;display:inline-block;">
+        <img src="${img.data}" onclick="openImgFull('${img.data}')" title="${img.name}" style="width:76px;height:58px;object-fit:cover;border-radius:4px;cursor:pointer;border:1px solid var(--border);">
+        <button onclick="deleteCompanyImage(${i})" style="position:absolute;top:-6px;right:-6px;background:var(--danger);border:none;color:#fff;border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer;line-height:18px;text-align:center;padding:0;">✕</button>
+      </div>`
+    ).join('');
+  }
+
+  const fileList = document.getElementById('co-file-list');
+  if (fileList) {
+    const empty = images.length === 0 && docs.length === 0;
+    fileList.innerHTML = docs.map((f, i) =>
+      `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:0.83rem;">
+        <span>📎</span>
+        <a href="${f.data}" download="${f.name}" style="color:var(--blue-bright);flex:1;word-break:break-all;">${f.name}</a>
+        <button onclick="deleteCompanyFile(${i})" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1rem;padding:0 4px;">✕</button>
+      </div>`
+    ).join('') + (empty ? '<div style="color:var(--text-muted);font-size:0.82rem;padding:4px 0;">No files uploaded yet.</div>' : '');
+  }
+}
+
+function deleteCompanyImage(i) {
+  const images = load('info_company_images', []);
+  images.splice(i, 1);
+  save('info_company_images', images);
+  renderCompanyFiles();
+}
+
+function deleteCompanyFile(i) {
+  const docs = load('info_company_files', []);
+  docs.splice(i, 1);
+  save('info_company_files', docs);
+  renderCompanyFiles();
 }
 
 function saveInfoDetails() {
