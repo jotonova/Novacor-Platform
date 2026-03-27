@@ -860,6 +860,11 @@ label {
 .crm-name { font-weight: 600; font-size: 0.95rem; }
 .crm-detail { font-size: 0.8rem; color: var(--silver); margin: 3px 0; display: flex; align-items: center; gap: 6px; }
 .crm-notes { font-size: 0.78rem; color: var(--text-muted); margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px; font-style: italic; }
+.crm-note-preview { font-size:0.75rem; color:var(--text-muted); margin-top:8px; border-top:1px solid var(--border); padding-top:7px; cursor:pointer; font-style:italic; }
+.crm-note-preview:hover { color:var(--gold); }
+.crm-note-edit { margin-top:8px; border-top:1px solid var(--border); padding-top:7px; }
+.crm-note-edit textarea { width:100%; background:var(--card-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:0.75rem; padding:6px 8px; resize:vertical; font-family:inherit; box-sizing:border-box; }
+.crm-note-edit textarea:focus { outline:none; border-color:var(--gold); }
 /* Lead cards from Conversion Lab are wider and have extra data rows */
 .crm-card-lead { border-color: rgba(212,175,55,0.25); grid-column: span 1; }
 .crm-card-lead:hover { border-color: var(--gold); }
@@ -4286,7 +4291,11 @@ function crmLeadCard(c) {
       ${c.phone ? `<div class="crm-detail">📞 <a href="tel:${c.phone}" class="phone-link">${c.phone}</a></div>` : ''}
       ${c.email ? `<div class="crm-detail">✉️ <a href="mailto:${c.email}" class="phone-link">${c.email}</a></div>` : ''}
       ${tags.length ? `<div style="margin:8px 0 4px;">${tags.map(t=>`<span class="${tagClass(t)}">${t.replace(/_/g,' ')}</span>`).join('')}</div>` : ''}
-      ${c.notes ? `<div class="crm-notes">${c.notes}</div>` : ''}
+      <div class="crm-note-preview" id="crm-np-${c.id}" onclick="toggleCrmNote('${c.id}')">${c.notes ? (c.notes.length > 80 ? c.notes.slice(0,80)+'…' : c.notes) : '<em style="opacity:0.5;">+ add note</em>'}</div>
+      <div class="crm-note-edit hidden" id="crm-ne-${c.id}">
+        <textarea id="crm-nt-${c.id}" rows="3" placeholder="Notes about this lead...">${c.notes||''}</textarea>
+        <button onclick="saveCrmNote('${c.id}')" class="btn btn-sm btn-gold" style="margin-top:6px;font-size:0.7rem;">Save Note</button>
+      </div>
       <div style="font-size:0.68rem;color:var(--text-muted);margin-top:8px;">Added ${c.added||'—'}</div>
     </div>`;
 }
@@ -4315,7 +4324,11 @@ function renderCRM() {
       ${c.phone ? `<div class="crm-detail">📞 <a href="tel:${c.phone}" class="phone-link">${c.phone}</a></div>` : ''}
       ${c.email ? `<div class="crm-detail">✉️ <a href="mailto:${c.email}" class="phone-link">${c.email}</a></div>` : ''}
       ${c.address ? `<div class="crm-detail">📍 ${c.address}</div>` : ''}
-      ${c.notes ? `<div class="crm-notes">${c.notes}</div>` : ''}
+      <div class="crm-note-preview" id="crm-np-${c.id}" onclick="toggleCrmNote('${c.id}')">${c.notes ? (c.notes.length > 80 ? c.notes.slice(0,80)+'…' : c.notes) : '<em style="opacity:0.5;">+ add note</em>'}</div>
+      <div class="crm-note-edit hidden" id="crm-ne-${c.id}">
+        <textarea id="crm-nt-${c.id}" rows="3" placeholder="Notes...">${c.notes||''}</textarea>
+        <button onclick="saveCrmNote('${c.id}')" class="btn btn-sm btn-gold" style="margin-top:6px;font-size:0.7rem;">Save Note</button>
+      </div>
       <div style="font-size:0.68rem;color:var(--text-muted);margin-top:8px;">Added ${c.added||'—'}</div>
     </div>`;
   }).join('');
@@ -4325,6 +4338,27 @@ function deleteCRMContact(id) {
   const contacts=load('crm_contacts',[]).filter(c=>c.id!==id);
   save('crm_contacts',contacts);
   renderCRM();
+}
+
+function toggleCrmNote(id) {
+  document.getElementById('crm-np-'+id).classList.toggle('hidden');
+  document.getElementById('crm-ne-'+id).classList.toggle('hidden');
+}
+
+function saveCrmNote(id) {
+  const ta = document.getElementById('crm-nt-'+id);
+  if (!ta) return;
+  const notes = ta.value.trim();
+  const contacts = load('crm_contacts', []);
+  const idx = contacts.findIndex(c => c.id === id);
+  if (idx === -1) return;
+  contacts[idx].notes = notes;
+  save('crm_contacts', contacts);
+  const preview = document.getElementById('crm-np-'+id);
+  preview.innerHTML = notes ? (notes.length > 80 ? notes.slice(0,80)+'…' : notes) : '<em style="opacity:0.5;">+ add note</em>';
+  document.getElementById('crm-ne-'+id).classList.add('hidden');
+  preview.classList.remove('hidden');
+  toast('Note saved');
 }
 
 // ══════════════════════════════════════════════════════
