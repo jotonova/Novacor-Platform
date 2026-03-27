@@ -4257,6 +4257,19 @@ function crmTypeMatch(contact, filter) {
   return (contact.type||'').toLowerCase() === filter.toLowerCase();
 }
 
+function crmNoteBlock(c) {
+  const preview = c.notes
+    ? (c.notes.length > 80 ? c.notes.slice(0, 80) + '…' : c.notes)
+    : '<span style="color:var(--gold);font-style:normal;font-size:0.72rem;">+ add note</span>';
+  return `<div style="margin-top:8px;border-top:1px solid var(--border);padding-top:7px;">
+      <div class="crm-note-toggle" data-cid="${c.id}" style="font-size:0.75rem;color:var(--text-muted);cursor:pointer;font-style:italic;">${preview}</div>
+      <div class="crm-note-edit" data-edit="${c.id}" style="display:none;margin-top:6px;">
+        <textarea data-ta="${c.id}" rows="3" style="width:100%;background:var(--card-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.75rem;padding:6px 8px;resize:vertical;font-family:inherit;box-sizing:border-box;" placeholder="Notes...">${c.notes||''}</textarea>
+        <button class="btn btn-sm btn-gold crm-note-save" data-save="${c.id}" style="margin-top:6px;font-size:0.7rem;">Save Note</button>
+      </div>
+    </div>`;
+}
+
 function crmLeadCard(c) {
   const score = Number(c.ai_score) || 0;
   const scoreClass = score >= 70 ? 'crm-score-hot' : score >= 40 ? 'crm-score-warm' : 'crm-score-cold';
@@ -4292,11 +4305,7 @@ function crmLeadCard(c) {
       ${c.phone ? `<div class="crm-detail">📞 <a href="tel:${c.phone}" class="phone-link">${c.phone}</a></div>` : ''}
       ${c.email ? `<div class="crm-detail">✉️ <a href="mailto:${c.email}" class="phone-link">${c.email}</a></div>` : ''}
       ${tags.length ? `<div style="margin:8px 0 4px;">${tags.map(t=>`<span class="${tagClass(t)}">${t.replace(/_/g,' ')}</span>`).join('')}</div>` : ''}
-      <div class="crm-note-preview" id="crm-np-${c.id}" onclick="toggleCrmNote('${c.id}')">${c.notes ? (c.notes.length > 80 ? c.notes.slice(0,80)+'…' : c.notes) : '<span style="color:var(--gold);font-style:normal;font-size:0.72rem;">+ add note</span>'}</div>
-      <div class="crm-note-edit hidden" id="crm-ne-${c.id}">
-        <textarea id="crm-nt-${c.id}" rows="3" placeholder="Notes about this lead...">${c.notes||''}</textarea>
-        <button onclick="saveCrmNote('${c.id}')" class="btn btn-sm btn-gold" style="margin-top:6px;font-size:0.7rem;">Save Note</button>
-      </div>
+      ${crmNoteBlock(c)}
       <div style="font-size:0.68rem;color:var(--text-muted);margin-top:8px;">Added ${c.added||'—'}</div>
     </div>`;
 }
@@ -4325,11 +4334,7 @@ function renderCRM() {
       ${c.phone ? `<div class="crm-detail">📞 <a href="tel:${c.phone}" class="phone-link">${c.phone}</a></div>` : ''}
       ${c.email ? `<div class="crm-detail">✉️ <a href="mailto:${c.email}" class="phone-link">${c.email}</a></div>` : ''}
       ${c.address ? `<div class="crm-detail">📍 ${c.address}</div>` : ''}
-      <div class="crm-note-preview" id="crm-np-${c.id}" onclick="toggleCrmNote('${c.id}')">${c.notes ? (c.notes.length > 80 ? c.notes.slice(0,80)+'…' : c.notes) : '<span style="color:var(--gold);font-style:normal;font-size:0.72rem;">+ add note</span>'}</div>
-      <div class="crm-note-edit hidden" id="crm-ne-${c.id}">
-        <textarea id="crm-nt-${c.id}" rows="3" placeholder="Notes...">${c.notes||''}</textarea>
-        <button onclick="saveCrmNote('${c.id}')" class="btn btn-sm btn-gold" style="margin-top:6px;font-size:0.7rem;">Save Note</button>
-      </div>
+      ${crmNoteBlock(c)}
       <div style="font-size:0.68rem;color:var(--text-muted);margin-top:8px;">Added ${c.added||'—'}</div>
     </div>`;
   }).join('');
@@ -4341,26 +4346,34 @@ function deleteCRMContact(id) {
   renderCRM();
 }
 
-function toggleCrmNote(id) {
-  document.getElementById('crm-np-'+id).classList.toggle('hidden');
-  document.getElementById('crm-ne-'+id).classList.toggle('hidden');
-}
-
-function saveCrmNote(id) {
-  const ta = document.getElementById('crm-nt-'+id);
-  if (!ta) return;
-  const notes = ta.value.trim();
-  const contacts = load('crm_contacts', []);
-  const idx = contacts.findIndex(c => c.id === id);
-  if (idx === -1) return;
-  contacts[idx].notes = notes;
-  save('crm_contacts', contacts);
-  const preview = document.getElementById('crm-np-'+id);
-  preview.innerHTML = notes ? (notes.length > 80 ? notes.slice(0,80)+'…' : notes) : '<span style="color:var(--gold);font-style:normal;font-size:0.72rem;">+ add note</span>';
-  document.getElementById('crm-ne-'+id).classList.add('hidden');
-  preview.classList.remove('hidden');
-  toast('Note saved');
-}
+// CRM note toggle/save — event delegation (no inline onclick needed)
+document.addEventListener('click', function(e) {
+  const toggle = e.target.closest('.crm-note-toggle');
+  if (toggle) {
+    const id = toggle.dataset.cid;
+    const edit = document.querySelector('[data-edit="'+id+'"]');
+    if (!edit) return;
+    edit.style.display = edit.style.display === 'none' ? 'block' : 'none';
+    return;
+  }
+  const saveBtn = e.target.closest('.crm-note-save');
+  if (saveBtn) {
+    const id = saveBtn.dataset.save;
+    const ta = document.querySelector('[data-ta="'+id+'"]');
+    if (!ta) return;
+    const notes = ta.value.trim();
+    const contacts = load('crm_contacts', []);
+    const idx = contacts.findIndex(c => c.id === id);
+    if (idx === -1) return;
+    contacts[idx].notes = notes;
+    save('crm_contacts', contacts);
+    const tog = document.querySelector('.crm-note-toggle[data-cid="'+id+'"]');
+    if (tog) tog.innerHTML = notes ? (notes.length > 80 ? notes.slice(0,80)+'…' : notes) : '<span style="color:var(--gold);font-style:normal;font-size:0.72rem;">+ add note</span>';
+    const edit = document.querySelector('[data-edit="'+id+'"]');
+    if (edit) edit.style.display = 'none';
+    toast('Note saved');
+  }
+});
 
 // ══════════════════════════════════════════════════════
 // SIGN TRACKING
