@@ -160,9 +160,29 @@ app.get('/auth/logout', (req, res) => {
 
 // ── CRM lead import — server-to-server, authenticated via X-Platform-Secret ───
 // Placed before requireAuth so it doesn't need a browser cookie.
+// CORS headers allow the Conversion-Lab origin for both preflight and POST.
+const CRM_ALLOWED_ORIGIN = 'https://novacor-conversion-lab.onrender.com';
+
+function setCrmCors(res) {
+  res.setHeader('Access-Control-Allow-Origin', CRM_ALLOWED_ORIGIN);
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Platform-Secret');
+}
+
+app.options('/api/crm/contacts', (req, res) => {
+  setCrmCors(res);
+  res.sendStatus(204);
+});
+
 app.post('/api/crm/contacts', async (req, res) => {
-  const secret = process.env.PLATFORM_API_SECRET || '';
-  if (!secret || req.headers['x-platform-secret'] !== secret) {
+  setCrmCors(res);
+
+  const secret = process.env.PLATFORM_API_SECRET;
+  if (!secret) {
+    console.error('[CRM] PLATFORM_API_SECRET not set — rejecting request');
+    return res.status(500).json({ error: 'Server misconfigured: PLATFORM_API_SECRET not set' });
+  }
+  if (req.headers['x-platform-secret'] !== secret) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
