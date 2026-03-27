@@ -255,6 +255,7 @@ label {
   padding: 20px;
 }
 .modal-overlay.hidden { display: none; }
+.hidden { display: none !important; }
 .modal {
   background: var(--navy-mid);
   border: 1px solid var(--border);
@@ -4291,7 +4292,7 @@ function crmLeadCard(c) {
       ${c.phone ? `<div class="crm-detail">📞 <a href="tel:${c.phone}" class="phone-link">${c.phone}</a></div>` : ''}
       ${c.email ? `<div class="crm-detail">✉️ <a href="mailto:${c.email}" class="phone-link">${c.email}</a></div>` : ''}
       ${tags.length ? `<div style="margin:8px 0 4px;">${tags.map(t=>`<span class="${tagClass(t)}">${t.replace(/_/g,' ')}</span>`).join('')}</div>` : ''}
-      <div class="crm-note-preview" id="crm-np-${c.id}" onclick="toggleCrmNote('${c.id}')">${c.notes ? (c.notes.length > 80 ? c.notes.slice(0,80)+'…' : c.notes) : '<em style="opacity:0.5;">+ add note</em>'}</div>
+      <div class="crm-note-preview" id="crm-np-${c.id}" onclick="toggleCrmNote('${c.id}')">${c.notes ? (c.notes.length > 80 ? c.notes.slice(0,80)+'…' : c.notes) : '<span style="color:var(--gold);font-style:normal;font-size:0.72rem;">+ add note</span>'}</div>
       <div class="crm-note-edit hidden" id="crm-ne-${c.id}">
         <textarea id="crm-nt-${c.id}" rows="3" placeholder="Notes about this lead...">${c.notes||''}</textarea>
         <button onclick="saveCrmNote('${c.id}')" class="btn btn-sm btn-gold" style="margin-top:6px;font-size:0.7rem;">Save Note</button>
@@ -4324,7 +4325,7 @@ function renderCRM() {
       ${c.phone ? `<div class="crm-detail">📞 <a href="tel:${c.phone}" class="phone-link">${c.phone}</a></div>` : ''}
       ${c.email ? `<div class="crm-detail">✉️ <a href="mailto:${c.email}" class="phone-link">${c.email}</a></div>` : ''}
       ${c.address ? `<div class="crm-detail">📍 ${c.address}</div>` : ''}
-      <div class="crm-note-preview" id="crm-np-${c.id}" onclick="toggleCrmNote('${c.id}')">${c.notes ? (c.notes.length > 80 ? c.notes.slice(0,80)+'…' : c.notes) : '<em style="opacity:0.5;">+ add note</em>'}</div>
+      <div class="crm-note-preview" id="crm-np-${c.id}" onclick="toggleCrmNote('${c.id}')">${c.notes ? (c.notes.length > 80 ? c.notes.slice(0,80)+'…' : c.notes) : '<span style="color:var(--gold);font-style:normal;font-size:0.72rem;">+ add note</span>'}</div>
       <div class="crm-note-edit hidden" id="crm-ne-${c.id}">
         <textarea id="crm-nt-${c.id}" rows="3" placeholder="Notes...">${c.notes||''}</textarea>
         <button onclick="saveCrmNote('${c.id}')" class="btn btn-sm btn-gold" style="margin-top:6px;font-size:0.7rem;">Save Note</button>
@@ -4355,7 +4356,7 @@ function saveCrmNote(id) {
   contacts[idx].notes = notes;
   save('crm_contacts', contacts);
   const preview = document.getElementById('crm-np-'+id);
-  preview.innerHTML = notes ? (notes.length > 80 ? notes.slice(0,80)+'…' : notes) : '<em style="opacity:0.5;">+ add note</em>';
+  preview.innerHTML = notes ? (notes.length > 80 ? notes.slice(0,80)+'…' : notes) : '<span style="color:var(--gold);font-style:normal;font-size:0.72rem;">+ add note</span>';
   document.getElementById('crm-ne-'+id).classList.add('hidden');
   preview.classList.remove('hidden');
   toast('Note saved');
