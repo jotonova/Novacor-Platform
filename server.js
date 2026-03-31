@@ -33,7 +33,7 @@ function isAuthenticated(req) {
 function requireAuth(req, res, next) {
   if (isAuthenticated(req)) return next();
   // API routes → 401 JSON; page requests → redirect to /auth
-  if (req.path.startsWith('/api/') || req.path.startsWith('/auth/google')) {
+  if (req.path.startsWith('/api/')) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   res.redirect('/auth');
@@ -223,6 +223,38 @@ app.post('/api/crm/contacts', async (req, res) => {
   res.json({ ok: true, id: contact.id });
 });
 
+// GET /auth/google/revoke — clear stored token and force re-authorization
+app.get('/auth/google/revoke', async (req, res) => {
+  await db.execute({ sql: 'DELETE FROM kv WHERE key=?', args: ['google_tokens'] });
+  res.redirect('/auth/google');
+});
+
+// GET /auth/google — redirect to consent screen
+app.get('/auth/google', (req, res) => {
+  const auth = makeOAuth2Client(req);
+  const url = auth.generateAuthUrl({
+    access_type: 'offline',
+    scope: GOOGLE_SCOPES,
+    prompt: 'consent',
+  });
+  res.redirect(url);
+});
+
+// GET /auth/google/callback — exchange code for tokens
+app.get('/auth/google/callback', async (req, res) => {
+  const { code, error } = req.query;
+  if (error || !code) return res.redirect('/?google_error=1');
+  try {
+    const auth = makeOAuth2Client(req);
+    const { tokens } = await auth.getToken(code);
+    await saveTokens(tokens);
+    res.redirect('/?google_authed=1');
+  } catch (e) {
+    console.error('[Google OAuth] Callback error:', e.message);
+    res.redirect('/?google_error=1');
+  }
+});
+
 // ── All routes below require auth ─────────────────────────────────────────────
 app.use(requireAuth);
 app.use(express.static(__dirname));
@@ -311,38 +343,6 @@ async function getAuthedClient(req) {
   });
   return auth;
 }
-
-// GET /auth/google/revoke — clear stored token and force re-authorization
-app.get('/auth/google/revoke', async (req, res) => {
-  await db.execute({ sql: 'DELETE FROM kv WHERE key=?', args: ['google_tokens'] });
-  res.redirect('/auth/google');
-});
-
-// GET /auth/google — redirect to consent screen
-app.get('/auth/google', (req, res) => {
-  const auth = makeOAuth2Client(req);
-  const url = auth.generateAuthUrl({
-    access_type: 'offline',
-    scope: GOOGLE_SCOPES,
-    prompt: 'consent',
-  });
-  res.redirect(url);
-});
-
-// GET /auth/google/callback — exchange code for tokens
-app.get('/auth/google/callback', async (req, res) => {
-  const { code, error } = req.query;
-  if (error || !code) return res.redirect('/?google_error=1');
-  try {
-    const auth = makeOAuth2Client(req);
-    const { tokens } = await auth.getToken(code);
-    await saveTokens(tokens);
-    res.redirect('/?google_authed=1');
-  } catch (e) {
-    console.error('[Google OAuth] Callback error:', e.message);
-    res.redirect('/?google_error=1');
-  }
-});
 
 // GET /api/google/gmail — last 25 inbox messages (fresh, no cache, excludes trash/spam)
 app.get('/api/google/gmail', async (req, res) => {
