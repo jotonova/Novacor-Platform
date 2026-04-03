@@ -1094,7 +1094,254 @@ label {
   <div class="nav-right"></div>
 </nav>
 
+<div style="background:rgba(6,13,26,0.85);border-bottom:1px solid var(--border);padding:0 32px;display:flex;align-items:center;">
+  <button id="tasks-subnav-btn" onclick="switchPage('tasks')" style="font-family:'Barlow Condensed',sans-serif;font-size:0.72rem;letter-spacing:0.1em;text-transform:uppercase;font-weight:600;padding:10px 18px;cursor:pointer;border:none;background:transparent;color:var(--text-muted);border-bottom:2px solid transparent;margin-bottom:-1px;transition:all 0.2s;white-space:nowrap;">☑️ Task Manager</button>
+</div>
+
 <div id="app">
+
+<style>
+#page-tasks{padding:0 32px 60px;}
+.tasks-toolbar{display:flex;align-items:center;justify-content:space-between;margin:24px 0 20px;flex-wrap:wrap;gap:12px;}
+.tasks-view-toggle{display:flex;background:rgba(13,31,60,0.6);border:1px solid var(--border);border-radius:6px;overflow:hidden;}
+.view-btn{padding:6px 16px;font-size:0.75rem;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.08em;text-transform:uppercase;font-weight:600;border:none;background:transparent;color:var(--text-muted);cursor:pointer;transition:all 0.2s;}
+.view-btn.active{background:var(--gold);color:var(--navy);}
+.add-task-btn{padding:8px 20px;background:var(--gold);color:var(--navy);border:none;border-radius:6px;font-weight:700;font-family:'Barlow Condensed',sans-serif;font-size:0.78rem;letter-spacing:0.08em;text-transform:uppercase;cursor:pointer;transition:opacity 0.2s;}
+.add-task-btn:hover{opacity:0.85;}
+.week-nav{display:flex;align-items:center;gap:12px;}
+.week-nav-btn{background:transparent;border:1px solid var(--border);border-radius:4px;color:var(--text-muted);padding:5px 12px;cursor:pointer;font-size:0.85rem;transition:all 0.2s;}
+.week-nav-btn:hover{border-color:var(--gold);color:var(--gold);}
+.week-label{font-family:'Barlow Condensed',sans-serif;font-size:0.85rem;letter-spacing:0.06em;color:var(--text-muted);}
+.tasks-week-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;}
+.tasks-day-col{background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:12px;min-height:160px;}
+.tasks-day-col.today{border-color:var(--gold);}
+.tasks-day-label{font-family:'Barlow Condensed',sans-serif;font-size:0.68rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-muted);margin-bottom:3px;}
+.tasks-day-num{font-size:1.3rem;font-weight:700;color:var(--text);margin-bottom:10px;line-height:1;}
+.tasks-day-col.today .tasks-day-num{color:var(--gold);}
+.task-card{background:rgba(13,31,60,0.5);border:1px solid var(--border);border-radius:6px;padding:9px;margin-bottom:7px;transition:border-color 0.2s;}
+.task-card:hover{border-color:rgba(212,175,55,0.4);}
+.task-card-title{font-size:0.8rem;font-weight:600;color:var(--text);margin-bottom:3px;line-height:1.3;}
+.task-card-desc{font-size:0.72rem;color:var(--text-muted);margin-bottom:5px;line-height:1.4;}
+.task-card-time{font-size:0.68rem;color:var(--gold);margin-bottom:5px;font-family:'Barlow Condensed',sans-serif;}
+.task-card-actions{display:flex;gap:5px;align-items:center;flex-wrap:wrap;}
+.task-sel{flex:1;min-width:0;padding:3px 5px;font-size:0.68rem;background:rgba(6,13,26,0.8);border:1px solid var(--border);border-radius:4px;color:var(--text);cursor:pointer;font-family:inherit;}
+.task-sel:focus{outline:none;border-color:var(--gold);}
+.task-cal-btn{padding:3px 7px;background:transparent;border:1px solid rgba(212,175,55,0.4);border-radius:4px;color:var(--gold);font-size:0.65rem;cursor:pointer;white-space:nowrap;transition:all 0.2s;font-family:'Barlow Condensed',sans-serif;}
+.task-cal-btn:hover{background:rgba(212,175,55,0.1);}
+.task-cal-synced{padding:3px 7px;border:1px solid rgba(46,204,113,0.4);border-radius:4px;color:#2ecc71;font-size:0.65rem;font-family:'Barlow Condensed',sans-serif;}
+.daily-view-wrap{max-width:660px;}
+.daily-nav{display:flex;align-items:center;gap:16px;margin-bottom:18px;}
+.daily-nav-btn{background:transparent;border:1px solid var(--border);border-radius:4px;color:var(--text-muted);padding:6px 14px;cursor:pointer;font-size:0.82rem;transition:all 0.2s;}
+.daily-nav-btn:hover{border-color:var(--gold);color:var(--gold);}
+.daily-date-lbl{font-family:'Barlow Condensed',sans-serif;font-size:1.05rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--text);flex:1;text-align:center;}
+.daily-task-card{background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-bottom:10px;transition:border-color 0.2s;}
+.daily-task-card:hover{border-color:rgba(212,175,55,0.4);}
+.dtc-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:5px;}
+.dtc-title{font-size:0.88rem;font-weight:600;color:var(--text);}
+.dtc-time{font-size:0.75rem;color:var(--gold);font-family:'Barlow Condensed',sans-serif;}
+.dtc-desc{font-size:0.78rem;color:var(--text-muted);margin-bottom:10px;line-height:1.5;}
+.dtc-actions{display:flex;gap:8px;align-items:center;}
+.no-tasks{color:var(--text-muted);font-size:0.82rem;text-align:center;padding:32px 0;opacity:0.55;}
+.task-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:1000;align-items:center;justify-content:center;}
+.task-modal-overlay.open{display:flex;}
+.task-modal{background:#0a1628;border:1px solid var(--border);border-radius:12px;padding:28px 28px 24px;width:100%;max-width:480px;box-shadow:0 20px 60px rgba(0,0,0,0.6);}
+.tm-heading{font-family:'Barlow Condensed',sans-serif;font-size:1.1rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--gold);margin-bottom:20px;}
+.tm-label{display:block;font-size:0.7rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:5px;margin-top:14px;}
+.task-modal input,.task-modal textarea{width:100%;padding:9px 12px;background:rgba(6,13,26,0.8);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.84rem;font-family:inherit;resize:vertical;}
+.task-modal input:focus,.task-modal textarea:focus{outline:none;border-color:var(--gold);}
+.tm-row{display:flex;gap:12px;}
+.tm-row>div{flex:1;}
+.tm-footer{display:flex;gap:10px;justify-content:flex-end;margin-top:22px;}
+.tm-cancel{padding:9px 20px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);cursor:pointer;font-size:0.8rem;transition:all 0.2s;}
+.tm-cancel:hover{border-color:var(--gold);color:var(--gold);}
+.tm-save{padding:9px 24px;background:var(--gold);border:none;border-radius:6px;color:var(--navy);font-weight:700;font-size:0.8rem;cursor:pointer;transition:opacity 0.2s;}
+.tm-save:hover{opacity:0.85;}
+</style>
+
+<!-- ══════════════════════════════════════
+     TASKS
+══════════════════════════════════════ -->
+<div id="page-tasks" class="page">
+  <div class="page-header">
+    <div class="page-eyebrow">Daily Operations</div>
+    <div class="page-title">Task <em>Manager</em></div>
+    <div class="page-quote">Stay focused on what moves the needle.</div>
+  </div>
+
+  <div class="tasks-toolbar">
+    <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;">
+      <div class="tasks-view-toggle">
+        <button class="view-btn active" id="tvWeek" onclick="tasksSetView('week')">Weekly</button>
+        <button class="view-btn" id="tvDay" onclick="tasksSetView('day')">Daily</button>
+      </div>
+      <div class="week-nav" id="tasksWeekNav">
+        <button class="week-nav-btn" onclick="tasksShiftWeek(-1)">&#8249;</button>
+        <span class="week-label" id="tasksWeekLabel"></span>
+        <button class="week-nav-btn" onclick="tasksShiftWeek(1)">&#8250;</button>
+      </div>
+    </div>
+    <button class="add-task-btn" onclick="tasksOpenModal()">+ Add Task</button>
+  </div>
+
+  <div id="tasksWeekView">
+    <div class="tasks-week-grid" id="tasksWeekGrid"></div>
+  </div>
+
+  <div id="tasksDayView" style="display:none;">
+    <div class="daily-view-wrap">
+      <div class="daily-nav">
+        <button class="daily-nav-btn" onclick="tasksShiftDay(-1)">&#8249; Prev</button>
+        <div class="daily-date-lbl" id="tasksDayLabel"></div>
+        <button class="daily-nav-btn" onclick="tasksShiftDay(1)">Next &#8250;</button>
+      </div>
+      <div id="tasksDayList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Task Modal -->
+<div class="task-modal-overlay" id="taskModalOverlay">
+  <div class="task-modal">
+    <div class="tm-heading">New Task</div>
+    <label class="tm-label">Task Title</label>
+    <input type="text" id="tmTitle" placeholder="e.g. Call seller on Oak St">
+    <label class="tm-label">Description</label>
+    <textarea id="tmDesc" rows="3" placeholder="Notes, details, what needs to happen..."></textarea>
+    <div class="tm-row">
+      <div><label class="tm-label">Date</label><input type="date" id="tmDate"></div>
+      <div><label class="tm-label">Time (optional)</label><input type="time" id="tmTime"></div>
+    </div>
+    <div class="tm-footer">
+      <button class="tm-cancel" onclick="tasksCloseModal()">Cancel</button>
+      <button class="tm-save" onclick="tasksSaveNew()">Save Task</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  let _view='week',_weekOff=0,_dayOff=0,_cache=[];
+  function _mon(off){const n=new Date(),d=n.getDay(),diff=(d===0?-6:1-d),m=new Date(n);m.setDate(n.getDate()+diff+off*7);m.setHours(0,0,0,0);return m;}
+  function _fmt(d){return d.toISOString().slice(0,10);}
+  function _esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+  function _time(t){if(!t)return'';const[h,m]=t.split(':').map(Number),ap=h>=12?'PM':'AM',hr=h%12||12;return hr+':'+(m+'').padStart(2,'0')+' '+ap;}
+
+  window.tasksSetView=function(v){
+    _view=v;
+    document.getElementById('tvWeek').classList.toggle('active',v==='week');
+    document.getElementById('tvDay').classList.toggle('active',v==='day');
+    document.getElementById('tasksWeekView').style.display=v==='week'?'':'none';
+    document.getElementById('tasksDayView').style.display=v==='day'?'':'none';
+    document.getElementById('tasksWeekNav').style.display=v==='week'?'flex':'none';
+    if(v==='week')_renderWeek();else _renderDay();
+  };
+  window.tasksShiftWeek=function(d){_weekOff+=d;_load();};
+  window.tasksShiftDay=function(d){_dayOff+=d;_renderDay();};
+
+  async function _load(){
+    const mon=_mon(_weekOff),sun=new Date(mon);sun.setDate(mon.getDate()+6);
+    const ws=_fmt(mon),we=_fmt(sun);
+    document.getElementById('tasksWeekLabel').textContent=mon.toLocaleDateString('en-US',{month:'short',day:'numeric'})+' – '+sun.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+    try{const r=await fetch(`/api/tasks?week_start=${ws}&week_end=${we}`);_cache=await r.json();}catch(e){_cache=[];}
+    if(_view==='week')_renderWeek();else _renderDay();
+  }
+
+  function _card(t,daily){
+    const hasTime=t.due_time&&t.due_time.trim(),hasCal=t.calendar_event_id;
+    const sel=`<select class="task-sel" onchange="tasksAction(this,'${_esc(t.id)}','${_esc(t.due_date)}')"><option value="">— Action —</option><option value="complete">✅ Complete</option><option value="move">📅 Move to Next Day</option></select>`;
+    const calBtn=hasTime&&!hasCal?`<button class="task-cal-btn" onclick="tasksToCal('${_esc(t.id)}')">📅 → GCal</button>`:'';
+    const synced=hasCal?`<span class="task-cal-synced">✓ GCal</span>`:'';
+    if(daily)return`<div class="daily-task-card" id="dtc-${t.id}"><div class="dtc-header"><div class="dtc-title">${_esc(t.title)}</div>${hasTime?`<div class="dtc-time">⏰ ${_time(t.due_time)}</div>`:''}</div>${t.description?`<div class="dtc-desc">${_esc(t.description)}</div>`:''}<div class="dtc-actions">${sel}${calBtn}${synced}</div></div>`;
+    return`<div class="task-card" id="tc-${t.id}"><div class="task-card-title">${_esc(t.title)}</div>${t.description?`<div class="task-card-desc">${_esc(t.description)}</div>`:''} ${hasTime?`<div class="task-card-time">⏰ ${_time(t.due_time)}</div>`:''}<div class="task-card-actions">${sel}${calBtn}${synced}</div></div>`;
+  }
+
+  function _renderWeek(){
+    const mon=_mon(_weekOff),today=_fmt(new Date()),days=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    let html='';
+    for(let i=0;i<7;i++){
+      const d=new Date(mon);d.setDate(mon.getDate()+i);
+      const ds=_fmt(d),isToday=ds===today,dayTasks=_cache.filter(t=>t.due_date===ds);
+      html+=`<div class="tasks-day-col${isToday?' today':''}"><div class="tasks-day-label">${days[i]}</div><div class="tasks-day-num">${d.getDate()}</div>${dayTasks.length?dayTasks.map(t=>_card(t,false)).join(''):'<div style="font-size:0.68rem;color:var(--text-muted);opacity:0.4;padding:6px 0;">No tasks</div>'}</div>`;
+    }
+    document.getElementById('tasksWeekGrid').innerHTML=html;
+  }
+
+  async function _renderDay(){
+    const base=new Date();base.setDate(base.getDate()+_dayOff);
+    const ds=_fmt(base);
+    document.getElementById('tasksDayLabel').textContent=base.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+    let day=_cache.filter(t=>t.due_date===ds);
+    if(!day.length){try{const r=await fetch(`/api/tasks?date=${ds}`);day=await r.json();}catch(e){day=[];}}
+    document.getElementById('tasksDayList').innerHTML=day.length?day.map(t=>_card(t,true)).join(''):`<div class="no-tasks">No tasks for this day — click + Add Task to get started.</div>`;
+  }
+
+  window.tasksAction=async function(sel,id,dateStr){
+    const val=sel.value;if(!val)return;sel.value='';
+    if(val==='complete'){
+      if(!confirm('Mark complete? This task will be permanently removed.'))return;
+      await fetch(`/api/tasks/${id}`,{method:'DELETE'});
+      _cache=_cache.filter(t=>t.id!==id);
+      document.getElementById('tc-'+id)?.remove();
+      document.getElementById('dtc-'+id)?.remove();
+      _load();
+    }else if(val==='move'){
+      const nxt=new Date(dateStr+'T12:00:00');nxt.setDate(nxt.getDate()+1);
+      await fetch(`/api/tasks/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({due_date:_fmt(nxt)})});
+      _load();
+    }
+  };
+
+  window.tasksToCal=async function(id){
+    const t=_cache.find(x=>x.id===id);if(!t||!t.due_time)return;
+    const start=`${t.due_date}T${t.due_time}:00`,ed=new Date(`${t.due_date}T${t.due_time}:00`);
+    ed.setHours(ed.getHours()+1);
+    const end=ed.toISOString().slice(0,19);
+    try{
+      const r=await fetch('/api/google/calendar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:t.title,start,end,description:t.description||''})});
+      const data=await r.json();
+      if(data.ok&&data.id){
+        await fetch(`/api/tasks/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({calendar_event_id:data.id})});
+        alert('✅ Added to Google Calendar!');_load();
+      }else{alert('Calendar error: '+(data.error||'Unknown'));}
+    }catch(e){alert('Error: '+e.message);}
+  };
+
+  window.tasksOpenModal=function(){
+    document.getElementById('tmTitle').value='';
+    document.getElementById('tmDesc').value='';
+    document.getElementById('tmTime').value='';
+    const base=new Date();if(_view==='day')base.setDate(base.getDate()+_dayOff);
+    document.getElementById('tmDate').value=_fmt(base);
+    document.getElementById('taskModalOverlay').classList.add('open');
+    setTimeout(()=>document.getElementById('tmTitle').focus(),50);
+  };
+  window.tasksCloseModal=function(){document.getElementById('taskModalOverlay').classList.remove('open');};
+  window.tasksSaveNew=async function(){
+    const title=document.getElementById('tmTitle').value.trim(),desc=document.getElementById('tmDesc').value.trim(),date=document.getElementById('tmDate').value,time=document.getElementById('tmTime').value;
+    if(!title){alert('Please enter a title.');return;}
+    if(!date){alert('Please pick a date.');return;}
+    try{
+      const r=await fetch('/api/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,description:desc,due_date:date,due_time:time||null})});
+      const task=await r.json();_cache.push(task);tasksCloseModal();_load();
+    }catch(e){alert('Error: '+e.message);}
+  };
+
+  document.getElementById('taskModalOverlay').addEventListener('click',function(e){if(e.target===this)tasksCloseModal();});
+
+  const _origSP=window.switchPage;
+  if(typeof _origSP==='function'){
+    window.switchPage=function(id){
+      _origSP(id);
+      if(id==='tasks')_load();
+      const btn=document.getElementById('tasks-subnav-btn');
+      if(btn){btn.style.color=id==='tasks'?'var(--gold)':'var(--text-muted)';btn.style.borderBottomColor=id==='tasks'?'var(--gold)':'transparent';}
+    };
+  }
+
+  document.addEventListener('DOMContentLoaded',_load);
+  if(document.readyState!=='loading')_load();
+})();
+</script>
 
 <!-- ══════════════════════════════════════
      DASHBOARD
