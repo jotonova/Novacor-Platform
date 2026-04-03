@@ -548,6 +548,69 @@ app.post('/api/google/calendar', async (req, res) => {
   }
 });
 
+// ── Tasks API ────────────────────────────────────────────────────────────────
+
+await db.execute(`CREATE TABLE IF NOT EXISTS tasks (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT DEFAULT '',
+  due_date TEXT NOT NULL,
+  due_time TEXT DEFAULT NULL,
+  status TEXT DEFAULT 'pending',
+  calendar_event_id TEXT DEFAULT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+)`);
+
+app.get('/api/tasks', async (req, res) => {
+  try {
+    const { date, week_start, week_end } = req.query;
+    let sql, args;
+    if (date) {
+      sql = "SELECT * FROM tasks WHERE due_date=? AND status!='deleted' ORDER BY due_time ASC";
+      args = [date];
+    } else if (week_start && week_end) {
+      sql = "SELECT * FROM tasks WHERE due_date>=? AND due_date<=? AND status!='deleted' ORDER BY due_date ASC, due_time ASC";
+      args = [week_start, week_end];
+    } else {
+      sql = "SELECT * FROM tasks WHERE status!='deleted' ORDER BY due_date ASC, due_time ASC";
+      args = [];
+    }
+    const r = await db.execute({ sql, args });
+    res.json(r.rows);
+  } catch (e) { console.error('[Tasks GET]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/tasks', async (req, res) => {
+  try {
+    const { title, description, due_date, due_time } = req.body;
+    if (!title || !due_date) return res.status(400).json({ error: 'title and due_date required' });
+    const id = `task_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
+    await db.execute({ sql: 'INSERT INTO tasks (id,title,description,due_date,due_time) VALUES (?,?,?,?,?)', args: [id, title, description||'', due_date, due_time||null] });
+    const r = await db.execute({ sql: 'SELECT * FROM tasks WHERE id=?', args: [id] });
+    res.json(r.rows[0]);
+  } catch (e) { console.error('[Tasks POST]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/tasks/:id', async (req, res) => {
+  try {
+    const allowed = ['status','due_date','due_time','title','description','calendar_event_id'];
+    const fields = [], args = [];
+    for (const k of allowed) { if (req.body[k] !== undefined) { fields.push(`${k}=?`); args.push(req.body[k]); } }
+    if (!fields.length) return res.status(400).json({ error: 'Nothing to update' });
+    args.push(req.params.id);
+    await db.execute({ sql: `UPDATE tasks SET ${fields.join(',')} WHERE id=?`, args });
+    const r = await db.execute({ sql: 'SELECT * FROM tasks WHERE id=?', args: [req.params.id] });
+    res.json(r.rows[0]);
+  } catch (e) { console.error('[Tasks PATCH]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/tasks/:id', async (req, res) => {
+  try {
+    await db.execute({ sql: 'DELETE FROM tasks WHERE id=?', args: [req.params.id] });
+    res.json({ ok: true });
+  } catch (e) { console.error('[Tasks DELETE]', e.message); res.status(500).json({ error: e.message }); }
+});
+
 // DELETE /api/google/calendar/:eventId — delete event
 app.delete('/api/google/calendar/:eventId', async (req, res) => {
   try {
