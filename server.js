@@ -554,12 +554,13 @@ app.post('/api/google/calendar', async (req, res) => {
     if (!title || !start || !end) return res.status(400).json({ error: 'title, start, end required' });
 
     const cal = google.calendar({ version: 'v3', auth });
+    const timeZone = 'America/Phoenix';
     const r = await cal.events.insert({
       calendarId: 'primary',
       requestBody: {
         summary: title,
-        start: { dateTime: start },
-        end: { dateTime: end },
+        start: { dateTime: start, timeZone },
+        end: { dateTime: end, timeZone },
         ...(location ? { location } : {}),
         ...(description ? { description } : {}),
       },
