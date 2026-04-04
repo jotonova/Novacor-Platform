@@ -1184,6 +1184,8 @@ label {
 .nb-footer{display:flex;gap:10px;justify-content:flex-end;margin-top:22px;}
 .nb-btn-cancel{padding:9px 20px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);cursor:pointer;font-size:0.8rem;}
 .nb-btn-save{padding:9px 24px;background:var(--gold);border:none;border-radius:6px;color:var(--navy);font-weight:700;font-size:0.8rem;cursor:pointer;}
+.nb-preset-btn{padding:7px 16px;background:transparent;border:1px solid var(--border);border-radius:4px;color:var(--text-muted);cursor:pointer;font-size:0.75rem;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;font-weight:600;transition:all 0.2s;}
+.nb-preset-btn:hover{border-color:var(--gold);color:var(--gold);}
 </style>
 
 <!-- ══════════════════════════════════════
@@ -2167,25 +2169,96 @@ label {
 
   <!-- ── ACCOUNTS ── -->
   <div id="nb-accounts" class="nb-section" style="display:none;padding:0 32px;">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
-      <div style="font-size:0.82rem;color:var(--text-muted);">Manage bank accounts and credit cards</div>
-      <button onclick="nbOpenAccountModal()" style="padding:8px 18px;background:var(--gold);color:var(--navy);border:none;border-radius:6px;font-weight:700;font-size:0.78rem;cursor:pointer;">+ Add Account</button>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+      <div>
+        <div style="font-size:0.82rem;color:var(--text-muted);">Manage bank accounts and credit cards</div>
+        <div id="nb-sync-status" style="font-size:0.72rem;color:var(--text-muted);margin-top:4px;">Auto-sync: Every Monday 8:00 AM MST</div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button onclick="nbSyncNow()" id="nb-sync-btn" style="padding:8px 18px;background:transparent;border:1px solid var(--gold);color:var(--gold);border-radius:6px;font-weight:700;font-size:0.78rem;cursor:pointer;">⚡ Sync Now</button>
+        <button onclick="nbSendWeeklyReport()" style="padding:8px 18px;background:transparent;border:1px solid var(--border);color:var(--text-muted);border-radius:6px;font-weight:700;font-size:0.78rem;cursor:pointer;">📧 Send Report Now</button>
+        <button onclick="nbOpenAccountModal()" style="padding:8px 18px;background:var(--gold);color:var(--navy);border:none;border-radius:6px;font-weight:700;font-size:0.78rem;cursor:pointer;">+ Add Account</button>
+      </div>
     </div>
+    <!-- Sync Log -->
+    <div id="nb-sync-log" style="margin-bottom:20px;"></div>
     <div id="nb-accounts-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;"></div>
   </div>
 
   <!-- ── REPORTS ── -->
   <div id="nb-reports" class="nb-section" style="display:none;padding:0 32px;">
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;">
-      <div class="nb-report-card" onclick="nbGenerateReport('pl')"><div class="nb-report-icon">📈</div><div class="nb-report-title">Profit &amp; Loss</div><div class="nb-report-desc">Income vs expenses by period</div></div>
-      <div class="nb-report-card" onclick="nbGenerateReport('deals')"><div class="nb-report-icon">🏠</div><div class="nb-report-title">Deal Summary</div><div class="nb-report-desc">P&amp;L per property — Schedule D prep</div></div>
-      <div class="nb-report-card" onclick="nbGenerateReport('expenses')"><div class="nb-report-icon">📤</div><div class="nb-report-title">Expense by Category</div><div class="nb-report-desc">Full breakdown — Schedule C prep</div></div>
-      <div class="nb-report-card" onclick="nbGenerateReport('mileage')"><div class="nb-report-icon">🚗</div><div class="nb-report-title">Mileage Log</div><div class="nb-report-desc">All trips + total deduction</div></div>
+
+    <!-- Report Builder Header -->
+    <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:24px;margin-bottom:20px;">
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.9rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--gold);margin-bottom:20px;">📊 Report Builder</div>
+
+      <!-- Quick presets -->
+      <div style="margin-bottom:20px;">
+        <div style="font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:10px;">Quick Presets</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button onclick="nbSetReportPreset('q1')" class="nb-preset-btn">Q1 (Jan–Mar)</button>
+          <button onclick="nbSetReportPreset('q2')" class="nb-preset-btn">Q2 (Apr–Jun)</button>
+          <button onclick="nbSetReportPreset('q3')" class="nb-preset-btn">Q3 (Jul–Sep)</button>
+          <button onclick="nbSetReportPreset('q4')" class="nb-preset-btn">Q4 (Oct–Dec)</button>
+          <button onclick="nbSetReportPreset('ytd')" class="nb-preset-btn">Year to Date</button>
+          <button onclick="nbSetReportPreset('annual')" class="nb-preset-btn">Full Year</button>
+        </div>
+      </div>
+
+      <!-- Custom date range -->
+      <div style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;margin-bottom:20px;">
+        <div>
+          <div style="font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px;">From</div>
+          <input type="date" id="nb-report-start" class="nb-input" style="width:160px;">
+        </div>
+        <div>
+          <div style="font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px;">To</div>
+          <input type="date" id="nb-report-end" class="nb-input" style="width:160px;">
+        </div>
+        <div>
+          <div style="font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px;">Year</div>
+          <select id="nb-report-year" class="nb-select" style="width:100px;">
+            <option value="2026">2026</option><option value="2025">2025</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Report type selection -->
+      <div style="margin-bottom:20px;">
+        <div style="font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:10px;">Include in Report</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:0.8rem;color:var(--text);cursor:pointer;"><input type="checkbox" id="rpt-pl" checked style="accent-color:var(--gold);"> P&amp;L Summary</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:0.8rem;color:var(--text);cursor:pointer;"><input type="checkbox" id="rpt-income" checked style="accent-color:var(--gold);"> Income Detail</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:0.8rem;color:var(--text);cursor:pointer;"><input type="checkbox" id="rpt-expenses" checked style="accent-color:var(--gold);"> Expense Detail</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:0.8rem;color:var(--text);cursor:pointer;"><input type="checkbox" id="rpt-deals" checked style="accent-color:var(--gold);"> Deal P&amp;L</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:0.8rem;color:var(--text);cursor:pointer;"><input type="checkbox" id="rpt-mileage" checked style="accent-color:var(--gold);"> Mileage Log</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:0.8rem;color:var(--text);cursor:pointer;"><input type="checkbox" id="rpt-tax" checked style="accent-color:var(--gold);"> Tax Summary</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:0.8rem;color:var(--text);cursor:pointer;"><input type="checkbox" id="rpt-1099" style="accent-color:var(--gold);"> 1099 Contractors</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:0.8rem;color:var(--text);cursor:pointer;"><input type="checkbox" id="rpt-txns" style="accent-color:var(--gold);"> All Transactions</label>
+        </div>
+      </div>
+
+      <!-- Generate buttons -->
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button onclick="nbBuildReport('print')" style="padding:10px 24px;background:var(--gold);color:var(--navy);border:none;border-radius:6px;font-weight:700;font-size:0.82rem;cursor:pointer;">🖨️ Generate &amp; Print / Save PDF</button>
+        <button onclick="nbBuildReport('csv')" style="padding:10px 24px;background:transparent;border:1px solid var(--gold);color:var(--gold);border-radius:6px;font-weight:700;font-size:0.82rem;cursor:pointer;">⬇️ Download CSV</button>
+        <button onclick="nbBuildReport('email')" style="padding:10px 24px;background:transparent;border:1px solid var(--border);color:var(--text-muted);border-radius:6px;font-weight:700;font-size:0.82rem;cursor:pointer;">📧 Email to Me</button>
+      </div>
+    </div>
+
+    <!-- Quick single reports -->
+    <div style="font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:12px;">Quick Single Reports</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:24px;">
+      <div class="nb-report-card" onclick="nbGenerateReport('pl')"><div class="nb-report-icon">📈</div><div class="nb-report-title">Profit &amp; Loss</div><div class="nb-report-desc">Income vs expenses — CSV</div></div>
+      <div class="nb-report-card" onclick="nbGenerateReport('deals')"><div class="nb-report-icon">🏠</div><div class="nb-report-title">Deal Summary</div><div class="nb-report-desc">Per-property P&amp;L — Schedule D</div></div>
+      <div class="nb-report-card" onclick="nbGenerateReport('expenses')"><div class="nb-report-icon">📤</div><div class="nb-report-title">Expenses by Category</div><div class="nb-report-desc">Full breakdown — Schedule C</div></div>
+      <div class="nb-report-card" onclick="nbGenerateReport('mileage')"><div class="nb-report-icon">🚗</div><div class="nb-report-title">Mileage Log</div><div class="nb-report-desc">All trips + deduction total</div></div>
       <div class="nb-report-card" onclick="nbGenerateReport('1099')"><div class="nb-report-icon">👷</div><div class="nb-report-title">1099 Report</div><div class="nb-report-desc">Contractors over $600</div></div>
       <div class="nb-report-card" onclick="nbGenerateReport('tax')"><div class="nb-report-icon">🏛️</div><div class="nb-report-title">Tax Summary</div><div class="nb-report-desc">Quarterly estimates + payments</div></div>
-      <div class="nb-report-card" onclick="nbGenerateReport('yearend')" style="border-color:var(--gold);"><div class="nb-report-icon">📦</div><div class="nb-report-title">Year-End Tax Package</div><div class="nb-report-desc">Everything your accountant needs — CSV download</div></div>
+      <div class="nb-report-card" onclick="nbGenerateReport('yearend')" style="border-color:var(--gold);"><div class="nb-report-icon">📦</div><div class="nb-report-title">Year-End Tax Package</div><div class="nb-report-desc">Everything your accountant needs</div></div>
     </div>
-    <div id="nb-report-output" style="margin-top:24px;"></div>
+
+    <div id="nb-report-output"></div>
   </div>
 
 </div>
@@ -6141,6 +6214,281 @@ qeRenderDealList();
     a.href=url;a.download=`novabooks_${type}_${year}.csv`;a.click();
     URL.revokeObjectURL(url);
     $('nb-report-output').innerHTML=`<div style="padding:14px 18px;background:rgba(46,204,113,0.1);border:1px solid rgba(46,204,113,0.3);border-radius:6px;font-size:0.82rem;color:#2ecc71;">✅ <strong>${title}</strong> downloaded successfully!</div>`;
+  };
+
+  // ── Sync Now ─────────────────────────────────────────────────
+  window.nbSyncNow = async function() {
+    const btn=$('nb-sync-btn');
+    btn.textContent='⏳ Syncing...';btn.disabled=true;
+    try {
+      const r=await fetch('/api/nb/sync',{method:'POST'}).then(r=>r.json());
+      $('nb-sync-status').textContent=`Last sync: ${new Date().toLocaleString('en-US',{timeZone:'America/Phoenix'})} MST — ${r.imported} imported, ${r.skipped} skipped`;
+      $('nb-sync-status').style.color=r.imported>0?'#2ecc71':'var(--text-muted)';
+      nbLoadSyncLog();
+      if(r.imported>0){nbLoadDashboard();}
+      alert(`✅ Sync complete! ${r.imported} new transactions imported.`);
+    } catch(e){alert('Sync error: '+e.message);}
+    btn.textContent='⚡ Sync Now';btn.disabled=false;
+  };
+
+  window.nbSendWeeklyReport = async function() {
+    if(!confirm('Send weekly NovaBooks report to novacor.icaz@gmail.com now?')) return;
+    try {
+      await fetch('/api/nb/send-weekly-report',{method:'POST'});
+      alert('✅ Weekly report sent to novacor.icaz@gmail.com!');
+    } catch(e){alert('Error: '+e.message);}
+  };
+
+  window.nbLoadSyncLog = async function() {
+    const logs=await fetch('/api/nb/sync-log').then(r=>r.json());
+    const el=$('nb-sync-log');
+    if(!el||!logs.length) return;
+    el.innerHTML=`<div style="font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;">Sync History</div>`+
+    logs.slice(0,5).map(l=>`<div style="font-size:0.75rem;color:var(--text-muted);padding:6px 0;border-bottom:1px solid var(--border);">${new Date(l.synced_at).toLocaleString('en-US',{timeZone:'America/Phoenix'})} MST — ${l.summary}</div>`).join('');
+  };
+
+  // ── Report Builder ────────────────────────────────────────────
+  window.nbSetReportPreset = function(preset) {
+    const year=parseInt($('nb-report-year').value);
+    const presets={
+      q1:{start:`${year}-01-01`,end:`${year}-03-31`},
+      q2:{start:`${year}-04-01`,end:`${year}-06-30`},
+      q3:{start:`${year}-07-01`,end:`${year}-09-30`},
+      q4:{start:`${year}-10-01`,end:`${year}-12-31`},
+      ytd:{start:`${year}-01-01`,end:new Date().toISOString().slice(0,10)},
+      annual:{start:`${year}-01-01`,end:`${year}-12-31`}
+    };
+    if(presets[preset]){
+      $('nb-report-start').value=presets[preset].start;
+      $('nb-report-end').value=presets[preset].end;
+    }
+    document.querySelectorAll('.nb-preset-btn').forEach(b=>b.style.background='transparent');
+    event.target.style.background='rgba(212,175,55,0.15)';
+  };
+
+  window.nbBuildReport = async function(outputType) {
+    const startDate=$('nb-report-start').value;
+    const endDate=$('nb-report-end').value;
+    const year=$('nb-report-year').value;
+    if(!startDate||!endDate){alert('Please select a date range or use a preset.');return;}
+
+    $('nb-report-output').innerHTML='<div style="color:var(--text-muted);padding:16px 0;font-size:0.82rem;">⏳ Building report...</div>';
+
+    const includes={
+      pl:$('rpt-pl').checked, income:$('rpt-income').checked,
+      expenses:$('rpt-expenses').checked, deals:$('rpt-deals').checked,
+      mileage:$('rpt-mileage').checked, tax:$('rpt-tax').checked,
+      c1099:$('rpt-1099').checked, txns:$('rpt-txns').checked
+    };
+
+    const params=new URLSearchParams({start_date:startDate,end_date:endDate});
+    const [txns,mileage,vendors,deals,sum,taxPayments]=await Promise.all([
+      fetch('/api/nb/transactions?'+params).then(r=>r.json()),
+      fetch(`/api/nb/mileage?year=${year}`).then(r=>r.json()),
+      fetch('/api/nb/vendors').then(r=>r.json()),
+      fetch('/api/nb/deals').then(r=>r.json()),
+      fetch(`/api/nb/summary?year=${year}`).then(r=>r.json()),
+      fetch('/api/nb/tax-payments').then(r=>r.json())
+    ]);
+
+    const fmt=n=>'$'+Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const fmtD=s=>s?new Date(s+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'';
+    const periodLabel=`${fmtD(startDate)} – ${fmtD(endDate)}`;
+
+    const income=txns.filter(t=>t.type==='income');
+    const expenses=txns.filter(t=>t.type==='expense');
+    const totalIncome=income.reduce((s,t)=>s+t.amount,0);
+    const totalExpenses=expenses.reduce((s,t)=>s+t.amount,0);
+    const netProfit=totalIncome-totalExpenses;
+    const estTax=netProfit>0?netProfit*0.9235*0.153+netProfit*0.22:0;
+    const totalMiles=mileage.reduce((s,r)=>s+r.miles,0);
+    const mileageDeduction=mileage.reduce((s,r)=>s+(r.miles*r.rate),0);
+
+    if(outputType==='csv'){
+      let csv='NOVACOR LLC — NOVABOOKS REPORT\n';
+      csv+=`Period: ${periodLabel}\n`;
+      csv+=`Generated: ${new Date().toLocaleDateString()}\n\n`;
+      if(includes.pl){
+        csv+='P&L SUMMARY\n';
+        csv+=`Total Income,${totalIncome}\nTotal Expenses,${totalExpenses}\nNet Profit,${netProfit}\nEst. Tax Owed,${estTax.toFixed(2)}\nMileage Deduction,${mileageDeduction.toFixed(2)}\n\n`;
+      }
+      if(includes.income){
+        csv+='INCOME DETAIL\n"Date","Vendor","Category","Amount"\n';
+        income.forEach(t=>{ csv+=`"${t.date}","${t.vendor||''}","${t.category}","${t.amount}"\n`; });
+        csv+='\n';
+      }
+      if(includes.expenses){
+        csv+='EXPENSE DETAIL\n"Date","Vendor","Category","Amount","Tax Deductible"\n';
+        expenses.forEach(t=>{ csv+=`"${t.date}","${t.vendor||''}","${t.category}","${t.amount}","${t.tax_deductible?'Yes':'No'}"\n`; });
+        csv+='\n';
+      }
+      if(includes.mileage){
+        csv+='MILEAGE LOG\n"Date","From","To","Purpose","Miles","Rate","Deduction"\n';
+        mileage.forEach(r=>{ csv+=`"${r.date}","${r.from_location}","${r.to_location}","${r.purpose}","${r.miles}","${r.rate}","${(r.miles*r.rate).toFixed(2)}"\n`; });
+        csv+='\n';
+      }
+      const blob=new Blob([csv],{type:'text/csv'});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      a.href=url;a.download=`novabooks_report_${startDate}_${endDate}.csv`;a.click();
+      URL.revokeObjectURL(url);
+      $('nb-report-output').innerHTML='<div style="padding:14px 18px;background:rgba(46,204,113,0.1);border:1px solid rgba(46,204,113,0.3);border-radius:6px;font-size:0.82rem;color:#2ecc71;">✅ CSV downloaded successfully!</div>';
+      return;
+    }
+
+    const catTotals={};
+    expenses.forEach(t=>{catTotals[t.category]=(catTotals[t.category]||0)+t.amount;});
+    const tdStyle='padding:10px 16px;border-bottom:1px solid #f0f0f0;font-size:13px;';
+    const thStyle='padding:10px 16px;background:#f8f9fa;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#666;text-align:left;border-bottom:2px solid #e8e8e8;';
+    const catRows=Object.entries(catTotals).sort((a,b)=>b[1]-a[1]).map(([c,a])=>`
+      <tr><td style="${tdStyle}">${c}</td><td style="${tdStyle}text-align:right;font-weight:600;">${fmt(a)}</td></tr>`).join('');
+
+    const dealRows=deals.map(d=>{
+      const dExp=txns.filter(t=>t.deal_id===d.id&&t.type==='expense').reduce((s,t)=>s+t.amount,0);
+      const profit=d.sale_price?(d.sale_price-d.purchase_price-dExp):null;
+      return`<tr>
+        <td style="${tdStyle}">${d.address}</td>
+        <td style="${tdStyle}text-transform:capitalize;">${d.status}</td>
+        <td style="${tdStyle}text-align:right;">${fmt(d.purchase_price)}</td>
+        <td style="${tdStyle}text-align:right;color:#e74c3c;">${fmt(dExp)}</td>
+        <td style="${tdStyle}text-align:right;">${fmt(d.purchase_price+dExp)}</td>
+        <td style="${tdStyle}text-align:right;color:#27ae60;">${d.sale_price?fmt(d.sale_price):'—'}</td>
+        <td style="${tdStyle}text-align:right;font-weight:700;color:${profit!=null?(profit>=0?'#27ae60':'#e74c3c'):'#666'};">${profit!=null?fmt(profit):'Active'}</td>
+      </tr>`;}).join('');
+
+    const mileageRows=mileage.map(r=>`<tr>
+      <td style="${tdStyle}">${r.date}</td>
+      <td style="${tdStyle}">${r.from_location}</td>
+      <td style="${tdStyle}">${r.to_location}</td>
+      <td style="${tdStyle}">${r.purpose}</td>
+      <td style="${tdStyle}text-align:right;">${r.miles.toFixed(1)}</td>
+      <td style="${tdStyle}text-align:right;color:#3498db;">${fmt(r.miles*r.rate)}</td>
+    </tr>`).join('');
+
+    const qTaxPaid=taxPayments.filter(p=>p.year==year).reduce((s,p)=>s+p.amount,0);
+
+    const reportHTML=`<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>NovaBooks Report — Novacor LLC</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#1a1a2e;background:#fff;}
+  @media print{.no-print{display:none!important;} body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+  .page-break{page-break-before:always;}
+  table{width:100%;border-collapse:collapse;}
+  h2{font-size:14px;letter-spacing:0.1em;text-transform:uppercase;color:#060d1a;margin:32px 0 16px;padding-bottom:8px;border-bottom:2px solid #d4af37;}
+  .section{margin-bottom:32px;}
+</style>
+</head>
+<body style="padding:48px;">
+  <div style="text-align:center;padding:48px 0 40px;border-bottom:3px solid #060d1a;margin-bottom:40px;">
+    <div style="font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:#d4af37;margin-bottom:10px;">Novacor LLC — Internal Accounting</div>
+    <div style="font-size:32px;font-weight:700;color:#060d1a;margin-bottom:8px;">NovaBooks Financial Report</div>
+    <div style="font-size:16px;color:#555;margin-bottom:4px;">${periodLabel}</div>
+    <div style="font-size:12px;color:#999;margin-top:16px;">Generated: ${new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div>
+  </div>
+  ${includes.pl?`
+  <div class="section">
+    <h2>Executive Summary</h2>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px;">
+      <div style="padding:20px;background:#f8f9fa;border-radius:6px;border-left:4px solid #27ae60;"><div style="font-size:11px;color:#666;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px;">Total Income</div><div style="font-size:24px;font-weight:700;color:#27ae60;">${fmt(totalIncome)}</div></div>
+      <div style="padding:20px;background:#f8f9fa;border-radius:6px;border-left:4px solid #e74c3c;"><div style="font-size:11px;color:#666;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px;">Total Expenses</div><div style="font-size:24px;font-weight:700;color:#e74c3c;">${fmt(totalExpenses)}</div></div>
+      <div style="padding:20px;background:#f8f9fa;border-radius:6px;border-left:4px solid ${netProfit>=0?'#27ae60':'#e74c3c'};"><div style="font-size:11px;color:#666;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px;">Net Profit</div><div style="font-size:24px;font-weight:700;color:${netProfit>=0?'#27ae60':'#e74c3c'};">${fmt(netProfit)}</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
+      <div style="padding:16px;border:1px solid #e8e8e8;border-radius:6px;"><div style="font-size:11px;color:#666;margin-bottom:4px;">Est. Tax Owed</div><div style="font-size:18px;font-weight:700;color:#d4af37;">${fmt(estTax)}</div></div>
+      <div style="padding:16px;border:1px solid #e8e8e8;border-radius:6px;"><div style="font-size:11px;color:#666;margin-bottom:4px;">Mileage Deduction</div><div style="font-size:18px;font-weight:700;color:#3498db;">${fmt(mileageDeduction)}</div><div style="font-size:11px;color:#999;margin-top:2px;">${totalMiles.toFixed(1)} miles @ $0.67</div></div>
+      <div style="padding:16px;border:1px solid #e8e8e8;border-radius:6px;"><div style="font-size:11px;color:#666;margin-bottom:4px;">Tax Paid YTD</div><div style="font-size:18px;font-weight:700;color:#27ae60;">${fmt(qTaxPaid)}</div></div>
+    </div>
+  </div>`:''}
+  ${includes.expenses&&catRows?`
+  <div class="section">
+    <h2>Expenses by Category</h2>
+    <table>
+      <thead><tr><th style="${thStyle}">Category</th><th style="${thStyle}text-align:right;">Total</th></tr></thead>
+      <tbody>${catRows}</tbody>
+      <tfoot><tr style="background:#f8f9fa;"><td style="padding:12px 16px;font-weight:700;font-size:14px;">Total Expenses</td><td style="padding:12px 16px;text-align:right;font-weight:700;font-size:14px;color:#e74c3c;">${fmt(totalExpenses)}</td></tr></tfoot>
+    </table>
+  </div>`:''}
+  ${includes.deals&&dealRows?`
+  <div class="section page-break">
+    <h2>Deal Summary — Property P&L</h2>
+    <table>
+      <thead><tr>
+        <th style="${thStyle}">Address</th><th style="${thStyle}">Status</th>
+        <th style="${thStyle}text-align:right;">Purchase</th><th style="${thStyle}text-align:right;">Expenses</th>
+        <th style="${thStyle}text-align:right;">Total Invested</th><th style="${thStyle}text-align:right;">Sale Price</th>
+        <th style="${thStyle}text-align:right;">Net Profit</th>
+      </tr></thead>
+      <tbody>${dealRows}</tbody>
+    </table>
+  </div>`:''}
+  ${includes.mileage&&mileageRows?`
+  <div class="section page-break">
+    <h2>Mileage Log — ${fmt(mileageDeduction)} Total Deduction</h2>
+    <table>
+      <thead><tr>
+        <th style="${thStyle}">Date</th><th style="${thStyle}">From</th><th style="${thStyle}">To</th>
+        <th style="${thStyle}">Purpose</th><th style="${thStyle}text-align:right;">Miles</th><th style="${thStyle}text-align:right;">Deduction</th>
+      </tr></thead>
+      <tbody>${mileageRows}</tbody>
+      <tfoot><tr style="background:#f8f9fa;"><td colspan="4" style="padding:12px 16px;font-weight:700;">Total</td><td style="padding:12px 16px;text-align:right;font-weight:700;">${totalMiles.toFixed(1)}</td><td style="padding:12px 16px;text-align:right;font-weight:700;color:#3498db;">${fmt(mileageDeduction)}</td></tr></tfoot>
+    </table>
+  </div>`:''}
+  ${includes.tax?`
+  <div class="section">
+    <h2>Tax Summary</h2>
+    <table>
+      <tbody>
+        <tr><td style="${tdStyle}">Net Profit (Taxable)</td><td style="${tdStyle}text-align:right;font-weight:600;">${fmt(netProfit)}</td></tr>
+        <tr><td style="${tdStyle}">Self-Employment Tax (15.3% on 92.35%)</td><td style="${tdStyle}text-align:right;font-weight:600;">${fmt(netProfit>0?netProfit*0.9235*0.153:0)}</td></tr>
+        <tr><td style="${tdStyle}">Federal Income Tax (Est. 22%)</td><td style="${tdStyle}text-align:right;font-weight:600;">${fmt(netProfit>0?netProfit*0.22:0)}</td></tr>
+        <tr style="background:#f8f9fa;"><td style="${tdStyle}font-weight:700;">Total Estimated Tax</td><td style="${tdStyle}text-align:right;font-weight:700;color:#d4af37;">${fmt(estTax)}</td></tr>
+        <tr><td style="${tdStyle}">Tax Paid YTD</td><td style="${tdStyle}text-align:right;color:#27ae60;font-weight:600;">${fmt(qTaxPaid)}</td></tr>
+        <tr style="background:#fff8e8;"><td style="${tdStyle}font-weight:700;">Remaining Owed</td><td style="${tdStyle}text-align:right;font-weight:700;color:#e74c3c;">${fmt(Math.max(0,estTax-qTaxPaid))}</td></tr>
+      </tbody>
+    </table>
+  </div>`:''}
+  ${includes.income?`
+  <div class="section page-break">
+    <h2>Income Detail</h2>
+    <table>
+      <thead><tr><th style="${thStyle}">Date</th><th style="${thStyle}">Source</th><th style="${thStyle}">Category</th><th style="${thStyle}text-align:right;">Amount</th></tr></thead>
+      <tbody>${income.map(t=>`<tr><td style="${tdStyle}">${t.date}</td><td style="${tdStyle}">${t.vendor||'—'}</td><td style="${tdStyle}">${t.category}</td><td style="${tdStyle}text-align:right;color:#27ae60;font-weight:600;">${fmt(t.amount)}</td></tr>`).join('')}</tbody>
+      <tfoot><tr style="background:#f8f9fa;"><td colspan="3" style="padding:12px 16px;font-weight:700;">Total Income</td><td style="padding:12px 16px;text-align:right;font-weight:700;color:#27ae60;">${fmt(totalIncome)}</td></tr></tfoot>
+    </table>
+  </div>`:''}
+  ${includes.txns?`
+  <div class="section page-break">
+    <h2>All Transactions — ${txns.length} total</h2>
+    <table>
+      <thead><tr><th style="${thStyle}">Date</th><th style="${thStyle}">Vendor</th><th style="${thStyle}">Category</th><th style="${thStyle}">Type</th><th style="${thStyle}text-align:right;">Amount</th></tr></thead>
+      <tbody>${txns.map(t=>`<tr><td style="${tdStyle}">${t.date}</td><td style="${tdStyle}">${t.vendor||'—'}</td><td style="${tdStyle}">${t.category}</td><td style="${tdStyle}color:${t.type==='income'?'#27ae60':'#e74c3c'};">${t.type}</td><td style="${tdStyle}text-align:right;font-weight:600;color:${t.type==='income'?'#27ae60':'#e74c3c'};">${t.type==='income'?'+':'−'}${fmt(t.amount)}</td></tr>`).join('')}</tbody>
+    </table>
+  </div>`:''}
+  <div style="margin-top:48px;padding-top:24px;border-top:2px solid #060d1a;text-align:center;">
+    <div style="font-size:11px;color:#999;">Novacor LLC — NovaBooks Internal Accounting System</div>
+    <div style="font-size:11px;color:#bbb;margin-top:4px;">This report is confidential and intended for internal use only</div>
+  </div>
+</body>
+</html>`;
+
+    if(outputType==='print'){
+      const win=window.open('','_blank');
+      win.document.write(reportHTML);
+      win.document.close();
+      win.focus();
+      setTimeout(()=>win.print(),500);
+      $('nb-report-output').innerHTML='<div style="padding:14px 18px;background:rgba(46,204,113,0.1);border:1px solid rgba(46,204,113,0.3);border-radius:6px;font-size:0.82rem;color:#2ecc71;">✅ Report opened in new window — use Print to save as PDF or print!</div>';
+    } else if(outputType==='email'){
+      try{
+        await fetch('/api/google/gmail/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:'novacor.icaz@gmail.com',subject:`📊 NovaBooks Report — Novacor LLC | ${periodLabel}`,body:`NovaBooks report for ${periodLabel}\n\nTotal Income: ${fmt(totalIncome)}\nTotal Expenses: ${fmt(totalExpenses)}\nNet Profit: ${fmt(netProfit)}\nEst. Tax Owed: ${fmt(estTax)}`})});
+        alert('✅ Report summary emailed to novacor.icaz@gmail.com!');
+        $('nb-report-output').innerHTML='<div style="padding:14px 18px;background:rgba(46,204,113,0.1);border:1px solid rgba(46,204,113,0.3);border-radius:6px;font-size:0.82rem;color:#2ecc71;">✅ Report emailed to novacor.icaz@gmail.com!</div>';
+      }catch(e){alert('Email error: '+e.message);}
+    }
   };
 
   // ── Init ─────────────────────────────────────────────────────
