@@ -1261,7 +1261,7 @@ label {
     for(let i=0;i<7;i++){
       const d=new Date(mon);d.setDate(mon.getDate()+i);
       const ds=_fmt(d),isToday=ds===today,dayTasks=_cache.filter(t=>t.due_date===ds);
-      html+=`<div class="tasks-day-col${isToday?' today':''}"><div class="tasks-day-label">${days[i]}</div><div class="tasks-day-num">${d.getDate()}</div>${dayTasks.length?dayTasks.map(t=>_card(t,false)).join(''):'<div style="font-size:0.68rem;color:var(--text-muted);opacity:0.4;padding:6px 0;">No tasks</div>'}</div>`;
+      html+=`<div class="tasks-day-col${isToday?' today':''}" onclick="tasksOpenModalForDate('${ds}',event)" style="cursor:pointer;"><div class="tasks-day-label">${days[i]}</div><div class="tasks-day-num">${d.getDate()}</div>${dayTasks.length?dayTasks.map(t=>_card(t,false)).join(''):''}<div style="font-size:0.68rem;color:var(--text-muted);opacity:0.35;padding:6px 0;pointer-events:none;">+ add task</div></div>`;
     }
     document.getElementById('tasksWeekGrid').innerHTML=html;
   }
@@ -1304,6 +1304,17 @@ label {
         alert('✅ Added to Google Calendar!');_load();
       }else{alert('Calendar error: '+(data.error||'Unknown'));}
     }catch(e){alert('Error: '+e.message);}
+  };
+
+  window.tasksOpenModalForDate=function(dateStr, e){
+    // Don't trigger if clicking on a task card's interactive elements
+    if(e.target.closest('select')||e.target.closest('button')||e.target.closest('.task-cal-btn')||e.target.closest('.task-cal-synced')) return;
+    document.getElementById('tmTitle').value='';
+    document.getElementById('tmDesc').value='';
+    document.getElementById('tmTime').value='';
+    document.getElementById('tmDate').value=dateStr;
+    document.getElementById('taskModalOverlay').classList.add('open');
+    setTimeout(()=>document.getElementById('tmTitle').focus(),50);
   };
 
   window.tasksOpenModal=function(){
