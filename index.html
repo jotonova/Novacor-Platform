@@ -2063,7 +2063,7 @@ label {
       <div style="display:flex;align-items:center;gap:12px;">
         <span style="font-size:0.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;">Year</span>
         <select id="nb-year-select" onchange="nbLoadDashboard()" style="background:var(--card-bg);border:1px solid var(--border);color:var(--text);padding:6px 12px;border-radius:6px;font-size:0.82rem;">
-          <option value="2026">2026</option><option value="2025">2025</option>
+          <option value="2026">2026</option><option value="2025">2025</option><option value="2024">2024</option>
         </select>
       </div>
       <button onclick="nbOpenTxnModal()" style="padding:8px 20px;background:var(--gold);color:var(--navy);border:none;border-radius:6px;font-weight:700;font-family:'Barlow Condensed',sans-serif;font-size:0.78rem;letter-spacing:0.08em;text-transform:uppercase;cursor:pointer;">+ Add Transaction</button>
@@ -3041,7 +3041,7 @@ updateDate(); setInterval(updateDate, 60000);
 // ══════════════════════════════════════════════════════
 // DASHBOARD
 // ══════════════════════════════════════════════════════
-function renderDashboard() {
+async function renderDashboard() {
   // Quote
   const q = load('quote', '"People do not decide their futures, people decide their habits and their habits decide their futures." — F.M. Alexander');
   document.getElementById('dashboard-quote').textContent = q;
@@ -3091,6 +3091,35 @@ function renderDashboard() {
     <div class="stat-box"><div class="stat-box-num">$${fmtNum(totalExp)}</div><div class="stat-box-label">YTD Expenses</div></div>
     <div class="stat-box"><div class="stat-box-num" style="color:${(totalIncome*0.8)>=0?'#2ecc71':'#e74c3c'}">$${fmtNum(totalIncome*0.8)}</div><div class="stat-box-label">Net P&L (after tax)</div></div>
   `;
+
+  // Pull live financials from NovaBooks and overlay on stat boxes
+  try {
+    const year = new Date().getFullYear();
+    const prevYear = year - 1;
+    const [currSum, prevSum] = await Promise.all([
+      fetch(`/api/nb/summary?year=${year}`).then(r=>r.json()).catch(()=>null),
+      fetch(`/api/nb/summary?year=${prevYear}`).then(r=>r.json()).catch(()=>null)
+    ]);
+    const sum = (currSum?.totalExpenses > 0 || currSum?.totalIncome > 0) ? currSum : prevSum;
+    if(sum) {
+      const fmt = n => '$' + Number(n||0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+      document.querySelectorAll('.stat-box').forEach(box => {
+        const label = box.querySelector('.stat-box-label')?.textContent?.trim();
+        const numEl = box.querySelector('.stat-box-num');
+        if(!numEl) return;
+        if(label === 'YTD Income') {
+          numEl.textContent = fmt(sum.totalIncome);
+          numEl.style.color = '#2ecc71';
+        } else if(label === 'YTD Expenses') {
+          numEl.textContent = fmt(sum.totalExpenses);
+          numEl.style.color = '#e74c3c';
+        } else if(label && label.includes('Net P&L')) {
+          numEl.textContent = fmt(sum.netProfit);
+          numEl.style.color = sum.netProfit >= 0 ? '#2ecc71' : '#e74c3c';
+        }
+      });
+    }
+  } catch(e) { console.error('Dashboard NovaBooks sync:', e); }
 
   // Google widgets
   loadGoogleWidgets();
@@ -5826,7 +5855,22 @@ window.bulkImportNotionExpenses = function() {
 
   // ── Dashboard ────────────────────────────────────────────────
   window.nbLoadDashboard = async function() {
-    const year = $('nb-year-select').value;
+    // Auto-select year with data if selector is still on the current year
+    const sel = $('nb-year-select');
+    const currentYear = new Date().getFullYear().toString();
+    if(sel && sel.value === currentYear) {
+      try {
+        const check = await fetch(`/api/nb/summary?year=${currentYear}`).then(r=>r.json());
+        if(check.totalExpenses === 0 && check.totalIncome === 0) {
+          const prevYear = (parseInt(currentYear)-1).toString();
+          const prevCheck = await fetch(`/api/nb/summary?year=${prevYear}`).then(r=>r.json());
+          if(prevCheck.totalExpenses > 0 || prevCheck.totalIncome > 0) {
+            sel.value = prevYear;
+          }
+        }
+      } catch(e) {}
+    }
+    const year = sel ? sel.value : currentYear;
     try {
       const [sum, txns] = await Promise.all([
         fetch(`/api/nb/summary?year=${year}`).then(r=>r.json()),
