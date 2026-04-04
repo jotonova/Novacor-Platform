@@ -1156,6 +1156,34 @@ label {
 .tm-cancel:hover{border-color:var(--gold);color:var(--gold);}
 .tm-save{padding:9px 24px;background:var(--gold);border:none;border-radius:6px;color:var(--navy);font-weight:700;font-size:0.8rem;cursor:pointer;transition:opacity 0.2s;}
 .tm-save:hover{opacity:0.85;}
+.nb-tab{font-family:'Barlow Condensed',sans-serif;font-size:0.72rem;letter-spacing:0.1em;text-transform:uppercase;font-weight:600;padding:12px 18px;cursor:pointer;border:none;background:transparent;color:var(--text-muted);border-bottom:2px solid transparent;margin-bottom:-1px;transition:all 0.2s;white-space:nowrap;}
+.nb-tab:hover{color:var(--gold);}
+.nb-tab.active{color:var(--gold);border-bottom-color:var(--gold);}
+.nb-section{animation:nbFadeIn 0.2s ease;}
+@keyframes nbFadeIn{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:translateY(0);}}
+.nb-stat-card{background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:16px 20px;}
+.nb-stat-label{font-size:0.68rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;font-family:'Barlow Condensed',sans-serif;}
+.nb-stat-value{font-size:1.5rem;font-weight:700;color:var(--text);}
+.nb-th{padding:10px 14px;font-size:0.68rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);font-family:'Barlow Condensed',sans-serif;text-align:left;font-weight:600;}
+.nb-td{padding:10px 14px;font-size:0.8rem;color:var(--text);border-top:1px solid var(--border);}
+.nb-report-card{background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:20px;cursor:pointer;transition:all 0.2s;}
+.nb-report-card:hover{border-color:var(--gold);transform:translateY(-2px);}
+.nb-report-icon{font-size:1.8rem;margin-bottom:10px;}
+.nb-report-title{font-weight:700;font-size:0.9rem;color:var(--text);margin-bottom:4px;}
+.nb-report-desc{font-size:0.75rem;color:var(--text-muted);}
+.nb-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:1000;align-items:center;justify-content:center;}
+.nb-modal-overlay.open{display:flex;}
+.nb-modal{background:#0a1628;border:1px solid var(--border);border-radius:12px;padding:28px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);}
+.nb-modal-title{font-family:'Barlow Condensed',sans-serif;font-size:1.1rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--gold);margin-bottom:20px;}
+.nb-label{display:block;font-size:0.7rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:5px;margin-top:14px;}
+.nb-input{width:100%;padding:9px 12px;background:rgba(6,13,26,0.8);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.84rem;font-family:inherit;}
+.nb-input:focus{outline:none;border-color:var(--gold);}
+.nb-select{width:100%;padding:9px 12px;background:rgba(6,13,26,0.8);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.84rem;font-family:inherit;}
+.nb-row{display:flex;gap:12px;}
+.nb-row>div{flex:1;}
+.nb-footer{display:flex;gap:10px;justify-content:flex-end;margin-top:22px;}
+.nb-btn-cancel{padding:9px 20px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);cursor:pointer;font-size:0.8rem;}
+.nb-btn-save{padding:9px 24px;background:var(--gold);border:none;border-radius:6px;color:var(--navy);font-weight:700;font-size:0.8rem;cursor:pointer;}
 </style>
 
 <!-- ══════════════════════════════════════
@@ -2010,42 +2038,156 @@ label {
 ══════════════════════════════════════ -->
 <div id="page-novabooks" class="page">
   <div class="page-header">
-    <div class="page-eyebrow">Accounting</div>
+    <div class="page-eyebrow">Novacor LLC</div>
     <div class="page-title">Nova<em>Books</em></div>
-    <div class="page-quote">Income, expenses, and mileage — all in one place for tax season.</div>
-  </div>
-  <div class="novabooks-stats" id="nb-stats"></div>
-
-  <div class="novabooks-grid">
-    <div class="nb-section">
-      <div class="nb-section-header">
-        <div class="nb-section-title">💰 Income</div>
-        <button class="btn btn-sm btn-gold" onclick="openModal('modal-nb-income')">+ Add</button>
-      </div>
-      <div class="nb-section-body" id="nb-income-list"></div>
-    </div>
-    <div class="nb-section">
-      <div class="nb-section-header">
-        <div class="nb-section-title">📤 Expenses</div>
-        <button class="btn btn-sm btn-outline" onclick="openModal('modal-nb-expense')">+ Add</button>
-      </div>
-      <div class="nb-section-body" id="nb-expense-list"></div>
-    </div>
+    <div class="page-quote">Clean books, zero surprises at tax time.</div>
   </div>
 
-  <div class="mileage-card" style="margin-top:20px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-      <div class="section-label">🚗 Mileage Log</div>
-      <button class="btn btn-sm btn-outline" onclick="openModal('modal-nb-mileage')">+ Log Trip</button>
+  <!-- Novabooks subnav -->
+  <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin:0 0 24px;padding:0 32px;overflow-x:auto;">
+    <button class="nb-tab active" data-tab="nb-dashboard" onclick="nbShowTab('nb-dashboard',this)">📊 Dashboard</button>
+    <button class="nb-tab" data-tab="nb-transactions" onclick="nbShowTab('nb-transactions',this)">💳 Transactions</button>
+    <button class="nb-tab" data-tab="nb-deals" onclick="nbShowTab('nb-deals',this)">🏠 Deals</button>
+    <button class="nb-tab" data-tab="nb-mileage" onclick="nbShowTab('nb-mileage',this)">🚗 Mileage</button>
+    <button class="nb-tab" data-tab="nb-vendors" onclick="nbShowTab('nb-vendors',this)">👷 Vendors</button>
+    <button class="nb-tab" data-tab="nb-tax" onclick="nbShowTab('nb-tax',this)">🏛️ Tax Center</button>
+    <button class="nb-tab" data-tab="nb-accounts" onclick="nbShowTab('nb-accounts',this)">🏦 Accounts</button>
+    <button class="nb-tab" data-tab="nb-reports" onclick="nbShowTab('nb-reports',this)">📄 Reports</button>
+  </div>
+
+  <!-- ── DASHBOARD ── -->
+  <div id="nb-dashboard" class="nb-section" style="padding:0 32px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <span style="font-size:0.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;">Year</span>
+        <select id="nb-year-select" onchange="nbLoadDashboard()" style="background:var(--card-bg);border:1px solid var(--border);color:var(--text);padding:6px 12px;border-radius:6px;font-size:0.82rem;">
+          <option value="2026">2026</option><option value="2025">2025</option>
+        </select>
+      </div>
+      <button onclick="nbOpenTxnModal()" style="padding:8px 20px;background:var(--gold);color:var(--navy);border:none;border-radius:6px;font-weight:700;font-family:'Barlow Condensed',sans-serif;font-size:0.78rem;letter-spacing:0.08em;text-transform:uppercase;cursor:pointer;">+ Add Transaction</button>
     </div>
-    <div class="mileage-grid" id="nb-mileage-stats"></div>
-    <div style="margin-top:16px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;overflow:hidden;">
-      <table class="data-table" id="nb-mileage-table">
-        <thead><tr><th>Date</th><th>From → To</th><th>Purpose</th><th>Miles</th><th>Deduction</th><th></th></tr></thead>
-        <tbody id="nb-mileage-body"></tbody>
+
+    <!-- Stats row -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:24px;" id="nb-stats-row">
+      <div class="nb-stat-card" id="nb-stat-income"><div class="nb-stat-label">Total Income</div><div class="nb-stat-value" style="color:#2ecc71;">$0</div></div>
+      <div class="nb-stat-card" id="nb-stat-expenses"><div class="nb-stat-label">Total Expenses</div><div class="nb-stat-value" style="color:#e74c3c;">$0</div></div>
+      <div class="nb-stat-card" id="nb-stat-profit"><div class="nb-stat-label">Net Profit</div><div class="nb-stat-value">$0</div></div>
+      <div class="nb-stat-card" id="nb-stat-tax"><div class="nb-stat-label">Est. Tax Owed</div><div class="nb-stat-value" style="color:var(--gold);">$0</div></div>
+      <div class="nb-stat-card" id="nb-stat-mileage"><div class="nb-stat-label">Mileage Deduction</div><div class="nb-stat-value" style="color:var(--blue-bright);">$0</div></div>
+      <div class="nb-stat-card" id="nb-stat-taxpaid"><div class="nb-stat-label">Tax Paid YTD</div><div class="nb-stat-value" style="color:#2ecc71;">$0</div></div>
+    </div>
+
+    <!-- Log a Draw button -->
+    <div style="margin-bottom:24px;">
+      <button onclick="nbOpenDrawModal()" style="padding:10px 24px;background:transparent;border:1px solid var(--gold);border-radius:6px;color:var(--gold);font-weight:700;font-family:'Barlow Condensed',sans-serif;font-size:0.82rem;letter-spacing:0.08em;text-transform:uppercase;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.background='rgba(212,175,55,0.1)'" onmouseout="this.style.background='transparent'">💸 Log a Draw</button>
+    </div>
+
+    <!-- Expense by category -->
+    <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:20px;">
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.78rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);margin-bottom:16px;">Expenses by Category</div>
+      <div id="nb-category-breakdown" style="display:flex;flex-direction:column;gap:8px;"></div>
+    </div>
+
+    <!-- Recent transactions -->
+    <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:20px;">
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.78rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);margin-bottom:16px;">Recent Transactions</div>
+      <div id="nb-recent-txns"></div>
+    </div>
+  </div>
+
+  <!-- ── TRANSACTIONS ── -->
+  <div id="nb-transactions" class="nb-section" style="display:none;padding:0 32px;">
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:20px;flex-wrap:wrap;">
+      <input id="nb-txn-search" type="text" placeholder="Search vendor, description, category..." oninput="nbLoadTransactions()" style="flex:1;min-width:200px;padding:8px 12px;background:var(--card-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.82rem;">
+      <select id="nb-txn-filter-type" onchange="nbLoadTransactions()" style="padding:8px 12px;background:var(--card-bg);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:0.82rem;">
+        <option value="">All Types</option><option value="income">Income</option><option value="expense">Expense</option>
+      </select>
+      <select id="nb-txn-filter-account" onchange="nbLoadTransactions()" style="padding:8px 12px;background:var(--card-bg);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:0.82rem;">
+        <option value="">All Accounts</option>
+      </select>
+      <input id="nb-txn-filter-start" type="date" onchange="nbLoadTransactions()" style="padding:8px 12px;background:var(--card-bg);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:0.82rem;">
+      <input id="nb-txn-filter-end" type="date" onchange="nbLoadTransactions()" style="padding:8px 12px;background:var(--card-bg);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:0.82rem;">
+      <button onclick="nbOpenTxnModal()" style="padding:8px 18px;background:var(--gold);color:var(--navy);border:none;border-radius:6px;font-weight:700;font-size:0.78rem;cursor:pointer;white-space:nowrap;">+ Add</button>
+    </div>
+    <div id="nb-txn-table-wrap" style="background:var(--card-bg);border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+      <table style="width:100%;border-collapse:collapse;" id="nb-txn-table">
+        <thead><tr style="border-bottom:1px solid var(--border);">
+          <th class="nb-th">Date</th><th class="nb-th">Vendor</th><th class="nb-th">Category</th><th class="nb-th">Deal</th><th class="nb-th">Account</th><th class="nb-th">Type</th><th class="nb-th" style="text-align:right;">Amount</th><th class="nb-th"></th>
+        </tr></thead>
+        <tbody id="nb-txn-tbody"></tbody>
       </table>
     </div>
   </div>
+
+  <!-- ── DEALS ── -->
+  <div id="nb-deals" class="nb-section" style="display:none;padding:0 32px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+      <div style="font-size:0.82rem;color:var(--text-muted);">Track expenses per property deal</div>
+      <button onclick="nbOpenDealModal()" style="padding:8px 18px;background:var(--gold);color:var(--navy);border:none;border-radius:6px;font-weight:700;font-size:0.78rem;cursor:pointer;">+ Add Deal</button>
+    </div>
+    <div id="nb-deals-list" style="display:flex;flex-direction:column;gap:14px;"></div>
+  </div>
+
+  <!-- ── MILEAGE ── -->
+  <div id="nb-mileage" class="nb-section" style="display:none;padding:0 32px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+      <div id="nb-mileage-summary" style="font-size:0.88rem;color:var(--text-muted);"></div>
+      <button onclick="nbOpenMileageModal()" style="padding:8px 18px;background:var(--gold);color:var(--navy);border:none;border-radius:6px;font-weight:700;font-size:0.78rem;cursor:pointer;">+ Log Trip</button>
+    </div>
+    <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+      <table style="width:100%;border-collapse:collapse;">
+        <thead><tr style="border-bottom:1px solid var(--border);">
+          <th class="nb-th">Date</th><th class="nb-th">From</th><th class="nb-th">To</th><th class="nb-th">Purpose</th><th class="nb-th">Deal</th><th class="nb-th" style="text-align:right;">Miles</th><th class="nb-th" style="text-align:right;">Deduction</th><th class="nb-th"></th>
+        </tr></thead>
+        <tbody id="nb-mileage-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── VENDORS ── -->
+  <div id="nb-vendors" class="nb-section" style="display:none;padding:0 32px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+      <div style="font-size:0.82rem;color:var(--text-muted);">Track contractors — auto-flags 1099 at $600+</div>
+      <button onclick="nbOpenVendorModal()" style="padding:8px 18px;background:var(--gold);color:var(--navy);border:none;border-radius:6px;font-weight:700;font-size:0.78rem;cursor:pointer;">+ Add Vendor</button>
+    </div>
+    <div id="nb-vendors-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;"></div>
+  </div>
+
+  <!-- ── TAX CENTER ── -->
+  <div id="nb-tax" class="nb-section" style="display:none;padding:0 32px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px;" id="nb-tax-quarters"></div>
+    <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.78rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);">IRS Payments Made</div>
+        <button onclick="nbOpenTaxPaymentModal()" style="padding:6px 14px;background:var(--gold);color:var(--navy);border:none;border-radius:4px;font-weight:700;font-size:0.72rem;cursor:pointer;">+ Log Payment</button>
+      </div>
+      <div id="nb-tax-payments-list"></div>
+    </div>
+  </div>
+
+  <!-- ── ACCOUNTS ── -->
+  <div id="nb-accounts" class="nb-section" style="display:none;padding:0 32px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+      <div style="font-size:0.82rem;color:var(--text-muted);">Manage bank accounts and credit cards</div>
+      <button onclick="nbOpenAccountModal()" style="padding:8px 18px;background:var(--gold);color:var(--navy);border:none;border-radius:6px;font-weight:700;font-size:0.78rem;cursor:pointer;">+ Add Account</button>
+    </div>
+    <div id="nb-accounts-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;"></div>
+  </div>
+
+  <!-- ── REPORTS ── -->
+  <div id="nb-reports" class="nb-section" style="display:none;padding:0 32px;">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;">
+      <div class="nb-report-card" onclick="nbGenerateReport('pl')"><div class="nb-report-icon">📈</div><div class="nb-report-title">Profit &amp; Loss</div><div class="nb-report-desc">Income vs expenses by period</div></div>
+      <div class="nb-report-card" onclick="nbGenerateReport('deals')"><div class="nb-report-icon">🏠</div><div class="nb-report-title">Deal Summary</div><div class="nb-report-desc">P&amp;L per property — Schedule D prep</div></div>
+      <div class="nb-report-card" onclick="nbGenerateReport('expenses')"><div class="nb-report-icon">📤</div><div class="nb-report-title">Expense by Category</div><div class="nb-report-desc">Full breakdown — Schedule C prep</div></div>
+      <div class="nb-report-card" onclick="nbGenerateReport('mileage')"><div class="nb-report-icon">🚗</div><div class="nb-report-title">Mileage Log</div><div class="nb-report-desc">All trips + total deduction</div></div>
+      <div class="nb-report-card" onclick="nbGenerateReport('1099')"><div class="nb-report-icon">👷</div><div class="nb-report-title">1099 Report</div><div class="nb-report-desc">Contractors over $600</div></div>
+      <div class="nb-report-card" onclick="nbGenerateReport('tax')"><div class="nb-report-icon">🏛️</div><div class="nb-report-title">Tax Summary</div><div class="nb-report-desc">Quarterly estimates + payments</div></div>
+      <div class="nb-report-card" onclick="nbGenerateReport('yearend')" style="border-color:var(--gold);"><div class="nb-report-icon">📦</div><div class="nb-report-title">Year-End Tax Package</div><div class="nb-report-desc">Everything your accountant needs — CSV download</div></div>
+    </div>
+    <div id="nb-report-output" style="margin-top:24px;"></div>
+  </div>
+
 </div>
 
 <!-- ══════════════════════════════════════
@@ -5393,6 +5535,704 @@ qeRenderDealList();
     loading="lazy"
   ></iframe>
 </div>
+
+<!-- Novabooks Modals -->
+<div class="nb-modal-overlay" id="nb-txn-modal">
+  <div class="nb-modal">
+    <div class="nb-modal-title" id="nb-txn-modal-title">Add Transaction</div>
+    <input type="hidden" id="nb-txn-id">
+    <div class="nb-row">
+      <div><label class="nb-label">Date</label><input type="date" id="nb-txn-date" class="nb-input"></div>
+      <div><label class="nb-label">Type</label>
+        <select id="nb-txn-type" class="nb-select">
+          <option value="expense">Expense</option>
+          <option value="income">Income</option>
+        </select>
+      </div>
+    </div>
+    <label class="nb-label">Account</label>
+    <select id="nb-txn-account" class="nb-select"></select>
+    <label class="nb-label">Vendor / Payee</label>
+    <input type="text" id="nb-txn-vendor" class="nb-input" placeholder="e.g. Home Depot, ABC Roofing">
+    <label class="nb-label">Category</label>
+    <select id="nb-txn-category" class="nb-select"></select>
+    <label class="nb-label">Amount ($)</label>
+    <input type="number" id="nb-txn-amount" class="nb-input" placeholder="0.00" step="0.01" min="0">
+    <label class="nb-label">Deal (optional)</label>
+    <select id="nb-txn-deal" class="nb-select"><option value="">— No Deal —</option></select>
+    <label class="nb-label">Description / Notes</label>
+    <textarea id="nb-txn-desc" class="nb-input" rows="2" placeholder="Optional notes..."></textarea>
+    <div style="margin-top:14px;display:flex;align-items:center;gap:8px;">
+      <input type="checkbox" id="nb-txn-taxdeduct" checked style="accent-color:var(--gold);">
+      <label for="nb-txn-taxdeduct" style="font-size:0.78rem;color:var(--text-muted);cursor:pointer;">Tax deductible</label>
+    </div>
+    <div class="nb-footer">
+      <button class="nb-btn-cancel" onclick="nbCloseModal('nb-txn-modal')">Cancel</button>
+      <button class="nb-btn-save" onclick="nbSaveTxn()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="nb-modal-overlay" id="nb-mileage-modal">
+  <div class="nb-modal">
+    <div class="nb-modal-title">Log Mileage Trip</div>
+    <label class="nb-label">Date</label>
+    <input type="date" id="nb-mil-date" class="nb-input">
+    <div class="nb-row">
+      <div><label class="nb-label">From</label><input type="text" id="nb-mil-from" class="nb-input" placeholder="Starting location"></div>
+      <div><label class="nb-label">To</label><input type="text" id="nb-mil-to" class="nb-input" placeholder="Destination"></div>
+    </div>
+    <label class="nb-label">Purpose</label>
+    <input type="text" id="nb-mil-purpose" class="nb-input" placeholder="e.g. Property inspection at 123 Oak St">
+    <div class="nb-row">
+      <div><label class="nb-label">Miles</label><input type="number" id="nb-mil-miles" class="nb-input" placeholder="0.0" step="0.1" min="0"></div>
+      <div><label class="nb-label">Deal (optional)</label>
+        <select id="nb-mil-deal" class="nb-select"><option value="">— General —</option></select>
+      </div>
+    </div>
+    <div style="margin-top:12px;padding:10px 14px;background:rgba(212,175,55,0.08);border-radius:6px;font-size:0.78rem;color:var(--text-muted);">
+      IRS rate: <strong style="color:var(--gold);">$0.67/mile</strong> — deduction calculated automatically
+    </div>
+    <div class="nb-footer">
+      <button class="nb-btn-cancel" onclick="nbCloseModal('nb-mileage-modal')">Cancel</button>
+      <button class="nb-btn-save" onclick="nbSaveMileage()">Save Trip</button>
+    </div>
+  </div>
+</div>
+
+<div class="nb-modal-overlay" id="nb-vendor-modal">
+  <div class="nb-modal">
+    <div class="nb-modal-title">Add Vendor / Contractor</div>
+    <input type="hidden" id="nb-vnd-id">
+    <div class="nb-row">
+      <div><label class="nb-label">Name</label><input type="text" id="nb-vnd-name" class="nb-input" placeholder="Full name"></div>
+      <div><label class="nb-label">Company</label><input type="text" id="nb-vnd-company" class="nb-input" placeholder="Company name"></div>
+    </div>
+    <div class="nb-row">
+      <div><label class="nb-label">Phone</label><input type="tel" id="nb-vnd-phone" class="nb-input"></div>
+      <div><label class="nb-label">Email</label><input type="email" id="nb-vnd-email" class="nb-input"></div>
+    </div>
+    <label class="nb-label">Address</label>
+    <input type="text" id="nb-vnd-address" class="nb-input">
+    <label class="nb-label">EIN or SSN (for 1099)</label>
+    <input type="text" id="nb-vnd-ein" class="nb-input" placeholder="XX-XXXXXXX">
+    <label class="nb-label">Notes</label>
+    <textarea id="nb-vnd-notes" class="nb-input" rows="2"></textarea>
+    <div class="nb-footer">
+      <button class="nb-btn-cancel" onclick="nbCloseModal('nb-vendor-modal')">Cancel</button>
+      <button class="nb-btn-save" onclick="nbSaveVendor()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="nb-modal-overlay" id="nb-account-modal">
+  <div class="nb-modal">
+    <div class="nb-modal-title">Add Account</div>
+    <label class="nb-label">Account Name</label>
+    <input type="text" id="nb-acct-name" class="nb-input" placeholder="e.g. Business Checking, Chase Ink Card">
+    <label class="nb-label">Type</label>
+    <select id="nb-acct-type" class="nb-select">
+      <option value="checking">Checking</option>
+      <option value="savings">Savings</option>
+      <option value="credit_card">Credit Card</option>
+      <option value="cash">Cash</option>
+    </select>
+    <div class="nb-row">
+      <div><label class="nb-label">Institution</label><input type="text" id="nb-acct-institution" class="nb-input" placeholder="e.g. Chase, Bank of America"></div>
+      <div><label class="nb-label">Last 4 digits</label><input type="text" id="nb-acct-last4" class="nb-input" placeholder="1234" maxlength="4"></div>
+    </div>
+    <div class="nb-row">
+      <div><label class="nb-label">Opening Balance ($)</label><input type="number" id="nb-acct-balance" class="nb-input" placeholder="0.00" step="0.01"></div>
+      <div><label class="nb-label">Opening Date</label><input type="date" id="nb-acct-date" class="nb-input"></div>
+    </div>
+    <div class="nb-footer">
+      <button class="nb-btn-cancel" onclick="nbCloseModal('nb-account-modal')">Cancel</button>
+      <button class="nb-btn-save" onclick="nbSaveAccount()">Save Account</button>
+    </div>
+  </div>
+</div>
+
+<div class="nb-modal-overlay" id="nb-deal-modal">
+  <div class="nb-modal">
+    <div class="nb-modal-title">Add Deal</div>
+    <label class="nb-label">Property Address</label>
+    <input type="text" id="nb-deal-address" class="nb-input" placeholder="123 Main St, Kingman AZ 86401">
+    <label class="nb-label">Status</label>
+    <select id="nb-deal-status" class="nb-select">
+      <option value="active">Active</option>
+      <option value="closed">Closed</option>
+      <option value="wholesale">Wholesale</option>
+    </select>
+    <div class="nb-row">
+      <div><label class="nb-label">Purchase Date</label><input type="date" id="nb-deal-pdate" class="nb-input"></div>
+      <div><label class="nb-label">Purchase Price ($)</label><input type="number" id="nb-deal-pprice" class="nb-input" placeholder="0" step="1"></div>
+    </div>
+    <div class="nb-row">
+      <div><label class="nb-label">Sale Date</label><input type="date" id="nb-deal-sdate" class="nb-input"></div>
+      <div><label class="nb-label">Sale Price ($)</label><input type="number" id="nb-deal-sprice" class="nb-input" placeholder="0" step="1"></div>
+    </div>
+    <label class="nb-label">Notes</label>
+    <textarea id="nb-deal-notes" class="nb-input" rows="2"></textarea>
+    <div class="nb-footer">
+      <button class="nb-btn-cancel" onclick="nbCloseModal('nb-deal-modal')">Cancel</button>
+      <button class="nb-btn-save" onclick="nbSaveDeal()">Save Deal</button>
+    </div>
+  </div>
+</div>
+
+<div class="nb-modal-overlay" id="nb-draw-modal">
+  <div class="nb-modal">
+    <div class="nb-modal-title">💸 Log an Owner's Draw</div>
+    <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:16px;line-height:1.5;">An owner's draw is money transferred from the business to your personal account. It is NOT an expense — it reduces your equity.</div>
+    <label class="nb-label">Date</label>
+    <input type="date" id="nb-draw-date" class="nb-input">
+    <label class="nb-label">Amount ($)</label>
+    <input type="number" id="nb-draw-amount" class="nb-input" placeholder="0.00" step="0.01" min="0">
+    <label class="nb-label">Account</label>
+    <select id="nb-draw-account" class="nb-select"></select>
+    <label class="nb-label">Notes</label>
+    <input type="text" id="nb-draw-notes" class="nb-input" placeholder="Optional notes">
+    <div class="nb-footer">
+      <button class="nb-btn-cancel" onclick="nbCloseModal('nb-draw-modal')">Cancel</button>
+      <button class="nb-btn-save" onclick="nbSaveDraw()">Log Draw</button>
+    </div>
+  </div>
+</div>
+
+<div class="nb-modal-overlay" id="nb-tax-payment-modal">
+  <div class="nb-modal">
+    <div class="nb-modal-title">Log IRS Tax Payment</div>
+    <div class="nb-row">
+      <div><label class="nb-label">Quarter</label>
+        <select id="nb-tp-quarter" class="nb-select">
+          <option value="Q1">Q1 (Jan–Mar, due Apr 15)</option>
+          <option value="Q2">Q2 (Apr–May, due Jun 15)</option>
+          <option value="Q3">Q3 (Jun–Aug, due Sep 15)</option>
+          <option value="Q4">Q4 (Sep–Dec, due Jan 15)</option>
+        </select>
+      </div>
+      <div><label class="nb-label">Year</label><input type="number" id="nb-tp-year" class="nb-input" value="2026"></div>
+    </div>
+    <label class="nb-label">Amount Paid ($)</label>
+    <input type="number" id="nb-tp-amount" class="nb-input" placeholder="0.00" step="0.01">
+    <label class="nb-label">Payment Date</label>
+    <input type="date" id="nb-tp-date" class="nb-input">
+    <label class="nb-label">Confirmation # (optional)</label>
+    <input type="text" id="nb-tp-conf" class="nb-input" placeholder="IRS confirmation number">
+    <div class="nb-footer">
+      <button class="nb-btn-cancel" onclick="nbCloseModal('nb-tax-payment-modal')">Cancel</button>
+      <button class="nb-btn-save" onclick="nbSaveTaxPayment()">Save Payment</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  NOVABOOKS
+// ═══════════════════════════════════════════════════════════════
+(function(){
+  const NB_CATEGORIES = {
+    income: ['Property Sale Proceeds','Wholesale / Assignment Fee','Rental Income','Other Income'],
+    expense: ['Property Purchase Price','Acquisition Costs','Rehab — Labor','Rehab — Materials','Permits & Fees','Staging & Cleaning','Carrying — Mortgage/Interest','Carrying — Insurance','Carrying — Utilities','Carrying — HOA','Selling Costs','Marketing — Direct Mail','Marketing — Signage','Marketing — Digital/Software','Office & Administrative','Professional Services','Vehicle & Mileage','Phone & Internet','Meals & Entertainment','Education & Training','Bank Fees & Interest','Business Insurance','Contract Labor','Subscriptions & Software','Owner\'s Draw','Miscellaneous']
+  };
+
+  let _nbAccounts = [], _nbDeals = [];
+
+  const $=id=>document.getElementById(id);
+  const fmt=n=>n==null?'$0':'$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const fmtDate=s=>s?new Date(s+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'';
+
+  // ── Tab switching ────────────────────────────────────────────
+  window.nbShowTab = function(tabId, btn) {
+    document.querySelectorAll('.nb-section').forEach(s=>s.style.display='none');
+    document.querySelectorAll('.nb-tab').forEach(b=>b.classList.remove('active'));
+    $(tabId).style.display='block';
+    btn.classList.add('active');
+    if(tabId==='nb-dashboard') nbLoadDashboard();
+    else if(tabId==='nb-transactions') { nbPopulateAccountFilter(); nbLoadTransactions(); }
+    else if(tabId==='nb-deals') nbLoadDeals();
+    else if(tabId==='nb-mileage') nbLoadMileage();
+    else if(tabId==='nb-vendors') nbLoadVendors();
+    else if(tabId==='nb-tax') nbLoadTax();
+    else if(tabId==='nb-accounts') nbLoadAccounts();
+  };
+
+  // ── Modal helpers ────────────────────────────────────────────
+  window.nbCloseModal = id => $(id).classList.remove('open');
+  function nbOpenModal(id) { $(id).classList.add('open'); }
+  document.querySelectorAll('.nb-modal-overlay').forEach(o=>o.addEventListener('click',function(e){if(e.target===this)this.classList.remove('open');}));
+
+  // ── Dashboard ────────────────────────────────────────────────
+  window.nbLoadDashboard = async function() {
+    const year = $('nb-year-select').value;
+    try {
+      const [sum, txns] = await Promise.all([
+        fetch(`/api/nb/summary?year=${year}`).then(r=>r.json()),
+        fetch(`/api/nb/transactions?year=${year}`).then(r=>r.json())
+      ]);
+      $('nb-stat-income').querySelector('.nb-stat-value').textContent = fmt(sum.totalIncome);
+      $('nb-stat-expenses').querySelector('.nb-stat-value').textContent = fmt(sum.totalExpenses);
+      const profitEl = $('nb-stat-profit').querySelector('.nb-stat-value');
+      profitEl.textContent = fmt(sum.netProfit);
+      profitEl.style.color = sum.netProfit >= 0 ? '#2ecc71' : '#e74c3c';
+      $('nb-stat-tax').querySelector('.nb-stat-value').textContent = fmt(sum.estimatedTaxOwed);
+      $('nb-stat-mileage').querySelector('.nb-stat-value').textContent = fmt(sum.mileageDeduction);
+      $('nb-stat-taxpaid').querySelector('.nb-stat-value').textContent = fmt(sum.taxPaid);
+      // Category breakdown
+      const cats = sum.byCategory || {};
+      const sorted = Object.entries(cats).sort((a,b)=>b[1]-a[1]).slice(0,8);
+      const max = sorted[0]?.[1] || 1;
+      $('nb-category-breakdown').innerHTML = sorted.length ? sorted.map(([cat,amt])=>`
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:140px;font-size:0.75rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${cat}</div>
+          <div style="flex:1;background:rgba(255,255,255,0.06);border-radius:3px;height:6px;"><div style="width:${(amt/max*100).toFixed(1)}%;background:var(--gold);height:100%;border-radius:3px;"></div></div>
+          <div style="font-size:0.78rem;color:var(--text);font-weight:600;min-width:70px;text-align:right;">${fmt(amt)}</div>
+        </div>`).join('') : '<div style="color:var(--text-muted);font-size:0.8rem;">No expenses yet</div>';
+      // Recent transactions
+      const recent = txns.slice(0,8);
+      $('nb-recent-txns').innerHTML = recent.length ? recent.map(t=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);">
+          <div>
+            <div style="font-size:0.82rem;font-weight:600;color:var(--text);">${t.vendor||t.category}</div>
+            <div style="font-size:0.7rem;color:var(--text-muted);">${fmtDate(t.date)} · ${t.category}</div>
+          </div>
+          <div style="font-weight:700;font-size:0.88rem;color:${t.type==='income'?'#2ecc71':'#e74c3c'};">${t.type==='income'?'+':'−'}${fmt(t.amount)}</div>
+        </div>`).join('') : '<div style="color:var(--text-muted);font-size:0.8rem;padding:12px 0;">No transactions yet</div>';
+    } catch(e) { console.error('NB dashboard error:', e); }
+  };
+
+  // ── Accounts ─────────────────────────────────────────────────
+  window.nbLoadAccounts = async function() {
+    const r = await fetch('/api/nb/accounts').then(r=>r.json());
+    _nbAccounts = r;
+    const list = $('nb-accounts-list');
+    const icons = {checking:'🏦',savings:'💰',credit_card:'💳',cash:'💵'};
+    list.innerHTML = r.length ? r.map(a=>`
+      <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:18px 20px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+          <div>
+            <div style="font-size:1rem;font-weight:700;color:var(--text);">${icons[a.type]||'🏦'} ${a.name}</div>
+            <div style="font-size:0.72rem;color:var(--text-muted);margin-top:2px;">${a.institution}${a.last4?' ····'+a.last4:''}</div>
+          </div>
+          <button onclick="nbDeleteAccount('${a.id}')" style="background:transparent;border:none;color:var(--text-muted);cursor:pointer;font-size:0.8rem;">✕</button>
+        </div>
+        <div style="font-size:0.72rem;color:var(--text-muted);">Opening balance: <span style="color:var(--text);">${fmt(a.opening_balance)}</span></div>
+        <div style="font-size:0.72rem;color:var(--text-muted);">Since: <span style="color:var(--text);">${fmtDate(a.opening_date)}</span></div>
+      </div>`).join('') : '<div style="color:var(--text-muted);font-size:0.82rem;">No accounts yet — add your business checking and credit card to get started.</div>';
+  };
+
+  window.nbOpenAccountModal = function() {
+    ['nb-acct-name','nb-acct-institution','nb-acct-last4'].forEach(id=>$(id).value='');
+    $('nb-acct-balance').value='';
+    $('nb-acct-date').value=new Date().toISOString().slice(0,10);
+    $('nb-acct-type').value='checking';
+    nbOpenModal('nb-account-modal');
+    setTimeout(()=>$('nb-acct-name').focus(),50);
+  };
+
+  window.nbSaveAccount = async function() {
+    const name=$('nb-acct-name').value.trim();
+    if(!name){alert('Please enter an account name.');return;}
+    await fetch('/api/nb/accounts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,type:$('nb-acct-type').value,institution:$('nb-acct-institution').value,last4:$('nb-acct-last4').value,opening_balance:parseFloat($('nb-acct-balance').value)||0,opening_date:$('nb-acct-date').value})});
+    nbCloseModal('nb-account-modal');
+    nbLoadAccounts();
+  };
+
+  window.nbDeleteAccount = async function(id) {
+    if(!confirm('Delete this account?')) return;
+    await fetch(`/api/nb/accounts/${id}`,{method:'DELETE'});
+    nbLoadAccounts();
+  };
+
+  // ── Transactions ─────────────────────────────────────────────
+  function nbPopulateAccountFilter() {
+    const sel=$('nb-txn-filter-account');
+    sel.innerHTML='<option value="">All Accounts</option>'+_nbAccounts.map(a=>`<option value="${a.id}">${a.name}</option>`).join('');
+  }
+
+  function nbPopulateTxnModal() {
+    const type=$('nb-txn-type').value;
+    $('nb-txn-category').innerHTML=NB_CATEGORIES[type].map(c=>`<option value="${c}">${c}</option>`).join('');
+    $('nb-txn-account').innerHTML=_nbAccounts.map(a=>`<option value="${a.id}">${a.name}</option>`).join('');
+    $('nb-txn-deal').innerHTML='<option value="">— No Deal —</option>'+_nbDeals.map(d=>`<option value="${d.id}">${d.address}</option>`).join('');
+  }
+
+  window.nbOpenTxnModal = async function() {
+    if(!_nbAccounts.length) { const r=await fetch('/api/nb/accounts').then(r=>r.json()); _nbAccounts=r; }
+    if(!_nbDeals.length) { const r=await fetch('/api/nb/deals').then(r=>r.json()); _nbDeals=r; }
+    $('nb-txn-id').value='';
+    $('nb-txn-modal-title').textContent='Add Transaction';
+    $('nb-txn-date').value=new Date().toISOString().slice(0,10);
+    $('nb-txn-type').value='expense';
+    $('nb-txn-vendor').value='';
+    $('nb-txn-amount').value='';
+    $('nb-txn-desc').value='';
+    $('nb-txn-taxdeduct').checked=true;
+    nbPopulateTxnModal();
+    nbOpenModal('nb-txn-modal');
+    setTimeout(()=>$('nb-txn-vendor').focus(),50);
+  };
+
+  $('nb-txn-type').addEventListener('change',()=>{ $('nb-txn-category').innerHTML=NB_CATEGORIES[$('nb-txn-type').value].map(c=>`<option value="${c}">${c}</option>`).join(''); });
+
+  window.nbSaveTxn = async function() {
+    const amount=parseFloat($('nb-txn-amount').value);
+    if(!$('nb-txn-date').value||!amount||!$('nb-txn-account').value){alert('Date, account, and amount are required.');return;}
+    const id=$('nb-txn-id').value;
+    const body={date:$('nb-txn-date').value,account_id:$('nb-txn-account').value,deal_id:$('nb-txn-deal').value||null,vendor:$('nb-txn-vendor').value,category:$('nb-txn-category').value,amount,type:$('nb-txn-type').value,description:$('nb-txn-desc').value,tax_deductible:$('nb-txn-taxdeduct').checked?1:0};
+    if(id) await fetch(`/api/nb/transactions/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    else await fetch('/api/nb/transactions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    nbCloseModal('nb-txn-modal');
+    nbLoadTransactions();
+    nbLoadDashboard();
+  };
+
+  window.nbLoadTransactions = async function() {
+    const params=new URLSearchParams();
+    const s=$('nb-txn-search').value; if(s) params.set('search',s);
+    const t=$('nb-txn-filter-type').value; if(t) params.set('type',t);
+    const a=$('nb-txn-filter-account').value; if(a) params.set('account_id',a);
+    const sd=$('nb-txn-filter-start').value; if(sd) params.set('start_date',sd);
+    const ed=$('nb-txn-filter-end').value; if(ed) params.set('end_date',ed);
+    const txns=await fetch('/api/nb/transactions?'+params).then(r=>r.json());
+    const acctMap=Object.fromEntries(_nbAccounts.map(a=>[a.id,a.name]));
+    const dealMap=Object.fromEntries(_nbDeals.map(d=>[d.id,d.address]));
+    $('nb-txn-tbody').innerHTML=txns.length?txns.map(t=>`
+      <tr>
+        <td class="nb-td">${fmtDate(t.date)}</td>
+        <td class="nb-td">${t.vendor||'—'}</td>
+        <td class="nb-td"><span style="font-size:0.72rem;background:rgba(255,255,255,0.06);padding:2px 7px;border-radius:10px;">${t.category}</span></td>
+        <td class="nb-td" style="font-size:0.75rem;color:var(--text-muted);">${t.deal_id?dealMap[t.deal_id]||'—':'—'}</td>
+        <td class="nb-td" style="font-size:0.75rem;color:var(--text-muted);">${acctMap[t.account_id]||'—'}</td>
+        <td class="nb-td"><span style="font-size:0.7rem;color:${t.type==='income'?'#2ecc71':'#e74c3c'};">${t.type}</span></td>
+        <td class="nb-td" style="text-align:right;font-weight:700;color:${t.type==='income'?'#2ecc71':'#e74c3c'};">${t.type==='income'?'+':'−'}${fmt(t.amount)}</td>
+        <td class="nb-td" style="text-align:right;">
+          <button onclick="nbEditTxn(${JSON.stringify(t).replace(/"/g,'&quot;')})" style="background:transparent;border:1px solid var(--border);color:var(--text-muted);border-radius:4px;padding:3px 8px;cursor:pointer;font-size:0.7rem;">Edit</button>
+          <button onclick="nbDeleteTxn('${t.id}')" style="background:transparent;border:1px solid rgba(231,76,60,0.3);color:#e74c3c;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:0.7rem;margin-left:4px;">Del</button>
+        </td>
+      </tr>`).join(''):'<tr><td colspan="8" class="nb-td" style="text-align:center;color:var(--text-muted);padding:24px;">No transactions found</td></tr>';
+  };
+
+  window.nbEditTxn = async function(t) {
+    if(!_nbAccounts.length){const r=await fetch('/api/nb/accounts').then(r=>r.json());_nbAccounts=r;}
+    if(!_nbDeals.length){const r=await fetch('/api/nb/deals').then(r=>r.json());_nbDeals=r;}
+    $('nb-txn-id').value=t.id;
+    $('nb-txn-modal-title').textContent='Edit Transaction';
+    $('nb-txn-date').value=t.date;
+    $('nb-txn-type').value=t.type;
+    nbPopulateTxnModal();
+    $('nb-txn-category').value=t.category;
+    $('nb-txn-account').value=t.account_id;
+    $('nb-txn-deal').value=t.deal_id||'';
+    $('nb-txn-vendor').value=t.vendor||'';
+    $('nb-txn-amount').value=t.amount;
+    $('nb-txn-desc').value=t.description||'';
+    $('nb-txn-taxdeduct').checked=!!t.tax_deductible;
+    nbOpenModal('nb-txn-modal');
+  };
+
+  window.nbDeleteTxn = async function(id) {
+    if(!confirm('Delete this transaction?')) return;
+    await fetch(`/api/nb/transactions/${id}`,{method:'DELETE'});
+    nbLoadTransactions();
+    nbLoadDashboard();
+  };
+
+  // ── Deals ────────────────────────────────────────────────────
+  window.nbLoadDeals = async function() {
+    const [deals, txns] = await Promise.all([
+      fetch('/api/nb/deals').then(r=>r.json()),
+      fetch('/api/nb/transactions').then(r=>r.json())
+    ]);
+    _nbDeals = deals;
+    const list=$('nb-deals-list');
+    list.innerHTML=deals.length?deals.map(d=>{
+      const dealTxns=txns.filter(t=>t.deal_id===d.id);
+      const totalExpenses=dealTxns.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
+      const totalIncome=dealTxns.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
+      const netProfit=d.sale_price?(d.sale_price-d.purchase_price-totalExpenses):null;
+      const statusColor={active:'#2ecc71',closed:'#95a5a6',wholesale:'#3498db'}[d.status]||'#95a5a6';
+      return `<div style="background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:20px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
+          <div>
+            <div style="font-size:0.95rem;font-weight:700;color:var(--text);">🏠 ${d.address}</div>
+            <div style="margin-top:4px;"><span style="font-size:0.68rem;background:${statusColor}22;color:${statusColor};padding:2px 8px;border-radius:10px;text-transform:uppercase;letter-spacing:0.06em;">${d.status}</span></div>
+          </div>
+          <button onclick="nbDeleteDeal('${d.id}')" style="background:transparent;border:none;color:var(--text-muted);cursor:pointer;">✕</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;font-size:0.78rem;">
+          <div><div style="color:var(--text-muted);margin-bottom:2px;">Purchase Price</div><div style="color:var(--text);font-weight:600;">${fmt(d.purchase_price)}</div></div>
+          <div><div style="color:var(--text-muted);margin-bottom:2px;">Total Expenses</div><div style="color:#e74c3c;font-weight:600;">${fmt(totalExpenses)}</div></div>
+          <div><div style="color:var(--text-muted);margin-bottom:2px;">Total Invested</div><div style="color:var(--text);font-weight:600;">${fmt(d.purchase_price+totalExpenses)}</div></div>
+          ${d.sale_price?`<div><div style="color:var(--text-muted);margin-bottom:2px;">Sale Price</div><div style="color:#2ecc71;font-weight:600;">${fmt(d.sale_price)}</div></div>`:''}
+          ${netProfit!=null?`<div><div style="color:var(--text-muted);margin-bottom:2px;">Net Profit</div><div style="color:${netProfit>=0?'#2ecc71':'#e74c3c'};font-weight:700;">${fmt(netProfit)}</div></div>`:''}
+        </div>
+        <div style="margin-top:12px;font-size:0.72rem;color:var(--text-muted);">${dealTxns.length} transaction${dealTxns.length!==1?'s':''} logged</div>
+      </div>`;
+    }).join(''):'<div style="color:var(--text-muted);font-size:0.82rem;">No deals yet — add your first property.</div>';
+  };
+
+  window.nbOpenDealModal = function() {
+    ['nb-deal-address','nb-deal-pdate','nb-deal-sdate','nb-deal-notes'].forEach(id=>$(id).value='');
+    ['nb-deal-pprice','nb-deal-sprice'].forEach(id=>$(id).value='');
+    $('nb-deal-status').value='active';
+    nbOpenModal('nb-deal-modal');
+    setTimeout(()=>$('nb-deal-address').focus(),50);
+  };
+
+  window.nbSaveDeal = async function() {
+    const address=$('nb-deal-address').value.trim();
+    if(!address){alert('Please enter a property address.');return;}
+    await fetch('/api/nb/deals',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address,status:$('nb-deal-status').value,purchase_date:$('nb-deal-pdate').value||null,purchase_price:parseFloat($('nb-deal-pprice').value)||0,sale_date:$('nb-deal-sdate').value||null,sale_price:parseFloat($('nb-deal-sprice').value)||0,notes:$('nb-deal-notes').value})});
+    nbCloseModal('nb-deal-modal');
+    nbLoadDeals();
+  };
+
+  window.nbDeleteDeal = async function(id) {
+    if(!confirm('Delete this deal? Transaction links will remain.')) return;
+    await fetch(`/api/nb/deals/${id}`,{method:'DELETE'});
+    nbLoadDeals();
+  };
+
+  // ── Mileage ──────────────────────────────────────────────────
+  window.nbLoadMileage = async function() {
+    const rows=await fetch('/api/nb/mileage').then(r=>r.json());
+    const totalMiles=rows.reduce((s,r)=>s+r.miles,0);
+    const totalDeduction=rows.reduce((s,r)=>s+(r.miles*r.rate),0);
+    $('nb-mileage-summary').innerHTML=`<strong style="color:var(--text);">${totalMiles.toFixed(1)} miles</strong> · <strong style="color:var(--gold);">${fmt(totalDeduction)} deduction</strong> · IRS rate $0.67/mile`;
+    const dealMap=Object.fromEntries(_nbDeals.map(d=>[d.id,d.address]));
+    $('nb-mileage-tbody').innerHTML=rows.length?rows.map(r=>`
+      <tr>
+        <td class="nb-td">${fmtDate(r.date)}</td>
+        <td class="nb-td">${r.from_location}</td>
+        <td class="nb-td">${r.to_location}</td>
+        <td class="nb-td">${r.purpose}</td>
+        <td class="nb-td" style="font-size:0.75rem;color:var(--text-muted);">${r.deal_id?(dealMap[r.deal_id]||'—'):'—'}</td>
+        <td class="nb-td" style="text-align:right;font-weight:600;">${r.miles.toFixed(1)}</td>
+        <td class="nb-td" style="text-align:right;color:var(--gold);font-weight:600;">${fmt(r.miles*r.rate)}</td>
+        <td class="nb-td"><button onclick="nbDeleteMileage('${r.id}')" style="background:transparent;border:1px solid rgba(231,76,60,0.3);color:#e74c3c;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:0.7rem;">Del</button></td>
+      </tr>`).join(''):'<tr><td colspan="8" class="nb-td" style="text-align:center;color:var(--text-muted);padding:20px;">No trips logged yet</td></tr>';
+  };
+
+  window.nbOpenMileageModal = async function() {
+    if(!_nbDeals.length){const r=await fetch('/api/nb/deals').then(r=>r.json());_nbDeals=r;}
+    ['nb-mil-from','nb-mil-to','nb-mil-purpose'].forEach(id=>$(id).value='');
+    $('nb-mil-miles').value='';
+    $('nb-mil-date').value=new Date().toISOString().slice(0,10);
+    $('nb-mil-deal').innerHTML='<option value="">— General —</option>'+_nbDeals.map(d=>`<option value="${d.id}">${d.address}</option>`).join('');
+    nbOpenModal('nb-mileage-modal');
+    setTimeout(()=>$('nb-mil-from').focus(),50);
+  };
+
+  window.nbSaveMileage = async function() {
+    const miles=parseFloat($('nb-mil-miles').value);
+    if(!$('nb-mil-date').value||!$('nb-mil-from').value||!$('nb-mil-to').value||!$('nb-mil-purpose').value||!miles){alert('All fields are required.');return;}
+    await fetch('/api/nb/mileage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:$('nb-mil-date').value,from_location:$('nb-mil-from').value,to_location:$('nb-mil-to').value,purpose:$('nb-mil-purpose').value,miles,deal_id:$('nb-mil-deal').value||null,rate:0.67})});
+    nbCloseModal('nb-mileage-modal');
+    nbLoadMileage();
+  };
+
+  window.nbDeleteMileage = async function(id) {
+    if(!confirm('Delete this trip?')) return;
+    await fetch(`/api/nb/mileage/${id}`,{method:'DELETE'});
+    nbLoadMileage();
+  };
+
+  // ── Vendors ──────────────────────────────────────────────────
+  window.nbLoadVendors = async function() {
+    const [vendors, txns] = await Promise.all([
+      fetch('/api/nb/vendors').then(r=>r.json()),
+      fetch('/api/nb/transactions?type=expense').then(r=>r.json())
+    ]);
+    const list=$('nb-vendors-list');
+    list.innerHTML=vendors.length?vendors.map(v=>{
+      const paid=txns.filter(t=>t.vendor&&t.vendor.toLowerCase()===v.name.toLowerCase()).reduce((s,t)=>s+t.amount,0);
+      const needs1099=paid>=600;
+      return `<div style="background:var(--card-bg);border:1px solid ${needs1099?'rgba(212,175,55,0.5)':'var(--border)'};border-radius:8px;padding:18px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
+          <div>
+            <div style="font-weight:700;font-size:0.88rem;color:var(--text);">👷 ${v.name}</div>
+            ${v.company?`<div style="font-size:0.72rem;color:var(--text-muted);">${v.company}</div>`:''}
+          </div>
+          <button onclick="nbDeleteVendor('${v.id}')" style="background:transparent;border:none;color:var(--text-muted);cursor:pointer;">✕</button>
+        </div>
+        ${needs1099?`<div style="font-size:0.7rem;background:rgba(212,175,55,0.12);color:var(--gold);padding:4px 10px;border-radius:4px;margin-bottom:8px;">⚠️ 1099-NEC Required — ${fmt(paid)} paid YTD</div>`:''}
+        <div style="font-size:0.72rem;color:var(--text-muted);line-height:1.8;">${v.phone?`📞 ${v.phone}<br>`:''}${v.email?`✉️ ${v.email}<br>`:''}${v.ein_ssn?`EIN/SSN: ${v.ein_ssn}`:''}
+        <br>Total paid: <strong style="color:var(--text);">${fmt(paid)}</strong></div>
+      </div>`;
+    }).join(''):'<div style="color:var(--text-muted);font-size:0.82rem;">No vendors yet</div>';
+  };
+
+  window.nbOpenVendorModal = function() {
+    ['nb-vnd-id','nb-vnd-name','nb-vnd-company','nb-vnd-phone','nb-vnd-email','nb-vnd-address','nb-vnd-ein','nb-vnd-notes'].forEach(id=>$(id).value='');
+    nbOpenModal('nb-vendor-modal');
+    setTimeout(()=>$('nb-vnd-name').focus(),50);
+  };
+
+  window.nbSaveVendor = async function() {
+    if(!$('nb-vnd-name').value.trim()){alert('Name is required.');return;}
+    await fetch('/api/nb/vendors',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:$('nb-vnd-name').value,company:$('nb-vnd-company').value,phone:$('nb-vnd-phone').value,email:$('nb-vnd-email').value,address:$('nb-vnd-address').value,ein_ssn:$('nb-vnd-ein').value,notes:$('nb-vnd-notes').value})});
+    nbCloseModal('nb-vendor-modal');
+    nbLoadVendors();
+  };
+
+  window.nbDeleteVendor = async function(id) {
+    if(!confirm('Delete this vendor?')) return;
+    await fetch(`/api/nb/vendors/${id}`,{method:'DELETE'});
+    nbLoadVendors();
+  };
+
+  // ── Tax Center ───────────────────────────────────────────────
+  window.nbLoadTax = async function() {
+    const year=new Date().getFullYear();
+    const [sum, payments] = await Promise.all([
+      fetch(`/api/nb/summary?year=${year}`).then(r=>r.json()),
+      fetch('/api/nb/tax-payments').then(r=>r.json())
+    ]);
+    const quarters=[
+      {q:'Q1',label:'Q1 — Jan through Mar',due:'April 15',months:[0,1,2]},
+      {q:'Q2',label:'Q2 — Apr through May',due:'June 15',months:[3,4]},
+      {q:'Q3',label:'Q3 — Jun through Aug',due:'September 15',months:[5,6,7]},
+      {q:'Q4',label:'Q4 — Sep through Dec',due:'January 15',months:[8,9,10,11]}
+    ];
+    const estPerQ=sum.estimatedTaxOwed/4;
+    $('nb-tax-quarters').innerHTML=quarters.map(q=>{
+      const paid=payments.filter(p=>p.quarter===q.q&&p.year===year).reduce((s,p)=>s+p.amount,0);
+      const due=new Date(`${q.due} ${year}`)<new Date();
+      return `<div style="background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:18px;">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.72rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px;">${q.label}</div>
+        <div style="font-size:1.2rem;font-weight:700;color:var(--text);margin-bottom:4px;">${fmt(estPerQ)} est.</div>
+        <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:8px;">Due: <span style="color:${due?'#e74c3c':'var(--text)'};">${q.due} ${year}</span></div>
+        <div style="font-size:0.78rem;">Paid: <strong style="color:${paid>=estPerQ?'#2ecc71':'#e74c3c'};">${fmt(paid)}</strong></div>
+      </div>`;
+    }).join('');
+    const yearPayments=payments.filter(p=>p.year===year);
+    $('nb-tax-payments-list').innerHTML=yearPayments.length?yearPayments.map(p=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);">
+        <div>
+          <div style="font-size:0.82rem;font-weight:600;color:var(--text);">${p.quarter} ${p.year} — ${fmt(p.amount)}</div>
+          <div style="font-size:0.7rem;color:var(--text-muted);">${fmtDate(p.payment_date)}${p.confirmation?' · Conf: '+p.confirmation:''}</div>
+        </div>
+        <button onclick="nbDeleteTaxPayment('${p.id}')" style="background:transparent;border:1px solid rgba(231,76,60,0.3);color:#e74c3c;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:0.7rem;">Del</button>
+      </div>`).join(''):'<div style="color:var(--text-muted);font-size:0.8rem;padding:12px 0;">No IRS payments logged yet for '+year+'</div>';
+  };
+
+  window.nbOpenTaxPaymentModal = function() {
+    $('nb-tp-amount').value='';$('nb-tp-conf').value='';
+    $('nb-tp-date').value=new Date().toISOString().slice(0,10);
+    $('nb-tp-year').value=new Date().getFullYear();
+    nbOpenModal('nb-tax-payment-modal');
+  };
+
+  window.nbSaveTaxPayment = async function() {
+    const amount=parseFloat($('nb-tp-amount').value);
+    if(!amount||!$('nb-tp-date').value){alert('Amount and date are required.');return;}
+    await fetch('/api/nb/tax-payments',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({quarter:$('nb-tp-quarter').value,year:parseInt($('nb-tp-year').value),amount,payment_date:$('nb-tp-date').value,confirmation:$('nb-tp-conf').value})});
+    nbCloseModal('nb-tax-payment-modal');
+    nbLoadTax();
+  };
+
+  window.nbDeleteTaxPayment = async function(id) {
+    if(!confirm('Delete this tax payment record?')) return;
+    await fetch(`/api/nb/tax-payments/${id}`,{method:'DELETE'});
+    nbLoadTax();
+  };
+
+  // ── Owner's Draw ─────────────────────────────────────────────
+  window.nbOpenDrawModal = async function() {
+    if(!_nbAccounts.length){const r=await fetch('/api/nb/accounts').then(r=>r.json());_nbAccounts=r;}
+    $('nb-draw-amount').value='';$('nb-draw-notes').value='';
+    $('nb-draw-date').value=new Date().toISOString().slice(0,10);
+    $('nb-draw-account').innerHTML=_nbAccounts.map(a=>`<option value="${a.id}">${a.name}</option>`).join('');
+    nbOpenModal('nb-draw-modal');
+    setTimeout(()=>$('nb-draw-amount').focus(),50);
+  };
+
+  window.nbSaveDraw = async function() {
+    const amount=parseFloat($('nb-draw-amount').value);
+    if(!amount||!$('nb-draw-account').value){alert('Amount and account are required.');return;}
+    await fetch('/api/nb/transactions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:$('nb-draw-date').value,account_id:$('nb-draw-account').value,vendor:'Owner Draw',category:"Owner's Draw",amount,type:'expense',description:$('nb-draw-notes').value,tax_deductible:0})});
+    nbCloseModal('nb-draw-modal');
+    nbLoadDashboard();
+    alert('✅ Draw logged successfully!');
+  };
+
+  // ── Reports ──────────────────────────────────────────────────
+  window.nbGenerateReport = async function(type) {
+    const year=new Date().getFullYear();
+    $('nb-report-output').innerHTML='<div style="color:var(--text-muted);font-size:0.82rem;padding:16px 0;">Generating report...</div>';
+    const [txns, mileage, vendors, deals, sum] = await Promise.all([
+      fetch(`/api/nb/transactions?year=${year}`).then(r=>r.json()),
+      fetch(`/api/nb/mileage?year=${year}`).then(r=>r.json()),
+      fetch('/api/nb/vendors').then(r=>r.json()),
+      fetch('/api/nb/deals').then(r=>r.json()),
+      fetch(`/api/nb/summary?year=${year}`).then(r=>r.json())
+    ]);
+    let rows=[], title='', headers=[];
+    if(type==='pl'||type==='yearend'){
+      title=`Profit & Loss — ${year}`;
+      headers=['Date','Vendor','Category','Type','Amount','Deal','Tax Deductible'];
+      rows=txns.map(t=>[t.date,t.vendor||'',t.category,t.type,t.amount,t.deal_id||'',t.tax_deductible?'Yes':'No']);
+    } else if(type==='deals'){
+      title=`Deal Summary — ${year}`;
+      headers=['Address','Status','Purchase Price','Total Expenses','Sale Price','Net Profit'];
+      rows=deals.map(d=>{
+        const exp=txns.filter(t=>t.deal_id===d.id&&t.type==='expense').reduce((s,t)=>s+t.amount,0);
+        const profit=d.sale_price?(d.sale_price-d.purchase_price-exp):0;
+        return[d.address,d.status,d.purchase_price,exp,d.sale_price||0,profit];
+      });
+    } else if(type==='expenses'){
+      title=`Expense by Category — ${year}`;
+      headers=['Category','Total'];
+      const cats={};
+      txns.filter(t=>t.type==='expense').forEach(t=>{cats[t.category]=(cats[t.category]||0)+t.amount;});
+      rows=Object.entries(cats).sort((a,b)=>b[1]-a[1]).map(([c,a])=>[c,a]);
+    } else if(type==='mileage'){
+      title=`Mileage Log — ${year}`;
+      headers=['Date','From','To','Purpose','Miles','Rate','Deduction'];
+      rows=mileage.map(r=>[r.date,r.from_location,r.to_location,r.purpose,r.miles,r.rate,(r.miles*r.rate).toFixed(2)]);
+    } else if(type==='1099'){
+      title=`1099 Contractor Report — ${year}`;
+      headers=['Vendor','Company','EIN/SSN','Total Paid','Needs 1099'];
+      rows=vendors.map(v=>{
+        const paid=txns.filter(t=>t.type==='expense'&&t.vendor&&t.vendor.toLowerCase()===v.name.toLowerCase()).reduce((s,t)=>s+t.amount,0);
+        return[v.name,v.company||'',v.ein_ssn||'',paid,paid>=600?'YES':'No'];
+      }).filter(r=>r[3]>0).sort((a,b)=>b[3]-a[3]);
+    } else if(type==='tax'){
+      title=`Tax Summary — ${year}`;
+      headers=['Item','Amount'];
+      rows=[['Total Income',sum.totalIncome],['Total Expenses',sum.totalExpenses],['Net Profit',sum.netProfit],['Self-Employment Tax (est.)',sum.seTax],['Federal Income Tax (est. 22%)',sum.fedTax],['Total Estimated Tax',sum.estimatedTaxOwed],['Tax Paid YTD',sum.taxPaid],['Remaining Owed',Math.max(0,sum.estimatedTaxOwed-sum.taxPaid)],['Mileage Deduction',sum.mileageDeduction]];
+    }
+    // Build CSV
+    const csv=[headers,...rows].map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob=new Blob([`${title}\nGenerated: ${new Date().toLocaleDateString()}\n\n${csv}`],{type:'text/csv'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download=`novabooks_${type}_${year}.csv`;a.click();
+    URL.revokeObjectURL(url);
+    $('nb-report-output').innerHTML=`<div style="padding:14px 18px;background:rgba(46,204,113,0.1);border:1px solid rgba(46,204,113,0.3);border-radius:6px;font-size:0.82rem;color:#2ecc71;">✅ <strong>${title}</strong> downloaded successfully!</div>`;
+  };
+
+  // ── Init ─────────────────────────────────────────────────────
+  async function nbInit() {
+    const [accts, deals] = await Promise.all([
+      fetch('/api/nb/accounts').then(r=>r.json()),
+      fetch('/api/nb/deals').then(r=>r.json())
+    ]);
+    _nbAccounts=accts;
+    _nbDeals=deals;
+  }
+
+  // Load when Novabooks tab is opened
+  const _origSP=window.switchPage;
+  if(typeof _origSP==='function'){
+    window.switchPage=function(id){
+      _origSP(id);
+      if(id==='novabooks'){ nbInit().then(()=>nbLoadDashboard()); }
+    };
+  }
+})();
+</script>
 
 </body>
 </html>
