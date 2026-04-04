@@ -2926,7 +2926,7 @@ function switchPage(id) {
   if(id==='dashboard') renderDashboard();
   if(id==='qualefi') renderAnalyses();
   if(id==='closed') renderClosed();
-  if(id==='novabooks') renderNovabooks();
+
   if(id==='contractors') renderContractors();
   if(id==='crm') renderCRM();
   if(id==='signs') renderSigns();
@@ -4260,7 +4260,6 @@ function saveNBIncome() {
   save('nb_income',income);
   closeModal('modal-nb-income');
   ['nb-inc-desc','nb-inc-amount','nb-inc-prop'].forEach(i=>document.getElementById(i).value='');
-  renderNovabooks();
   toast('💰 Income added!');
 }
 
@@ -4277,7 +4276,6 @@ function saveNBExpense() {
   save('nb_expenses',exps);
   closeModal('modal-nb-expense');
   ['nb-exp-desc','nb-exp-amount','nb-exp-prop'].forEach(i=>document.getElementById(i).value='');
-  renderNovabooks();
   toast('📤 Expense added!');
 }
 
@@ -4296,77 +4294,9 @@ function saveNBMileage() {
   save('nb_mileage',miles);
   closeModal('modal-nb-mileage');
   ['nb-mil-from','nb-mil-to','nb-mil-purpose','nb-mil-miles'].forEach(i=>document.getElementById(i).value='');
-  renderNovabooks();
   toast('🚗 Trip logged!');
 }
 
-function renderNovabooks() {
-  const income = load('nb_income',[]);
-  const exps = load('nb_expenses',[]);
-  const miles = load('nb_mileage',[]);
-
-  const totalIn = income.reduce((s,i)=>s+parseFloat(i.amount||0),0);
-  const totalExp = exps.reduce((s,e)=>s+parseFloat(e.amount||0),0);
-  const totalMiles = miles.reduce((s,m)=>s+parseFloat(m.miles||0),0);
-  const totalDed = miles.reduce((s,m)=>s+parseFloat(m.deduction||0),0);
-
-  document.getElementById('nb-stats').innerHTML = `
-    <div class="stat-box"><div class="stat-box-num" style="color:var(--success)">$${fmtNum(totalIn)}</div><div class="stat-box-label">Total Income</div></div>
-    <div class="stat-box"><div class="stat-box-num" style="color:var(--danger)">$${fmtNum(totalExp)}</div><div class="stat-box-label">Total Expenses</div></div>
-    <div class="stat-box"><div class="stat-box-num" style="color:${(totalIn-totalExp)>=0?'var(--success)':'var(--danger)'}">$${fmtNum(totalIn-totalExp)}</div><div class="stat-box-label">Net Profit</div></div>
-    <div class="stat-box"><div class="stat-box-num">${totalMiles.toFixed(0)}</div><div class="stat-box-label">Total Miles</div></div>
-  `;
-
-  // Income list
-  document.getElementById('nb-income-list').innerHTML = income.slice().reverse().map((item,i)=>`
-    <div class="nb-entry">
-      <div class="nb-entry-left">
-        <div class="nb-entry-desc">${item.desc}</div>
-        <div class="nb-entry-meta">${item.cat} · ${item.date||''}${item.prop?' · '+item.prop:''}</div>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span class="nb-entry-amount nb-income">+$${fmtDollar(item.amount)}</span>
-        <button class="btn btn-sm btn-ghost" onclick="deleteNBItem('nb_income','${item.id}')" style="padding:2px 7px;font-size:0.65rem;">✕</button>
-      </div>
-    </div>`).join('') || '<div class="nb-entry" style="color:var(--text-muted);">No income recorded.</div>';
-
-  // Expense list
-  document.getElementById('nb-expense-list').innerHTML = exps.slice().reverse().map((item,i)=>`
-    <div class="nb-entry">
-      <div class="nb-entry-left">
-        <div class="nb-entry-desc">${item.desc}</div>
-        <div class="nb-entry-meta">${item.cat} · ${item.date||''}${item.prop?' · '+item.prop:''}</div>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span class="nb-entry-amount nb-expense">-$${fmtDollar(item.amount)}</span>
-        <button class="btn btn-sm btn-ghost" onclick="deleteNBItem('nb_expenses','${item.id}')" style="padding:2px 7px;font-size:0.65rem;">✕</button>
-      </div>
-    </div>`).join('') || '<div class="nb-entry" style="color:var(--text-muted);">No expenses recorded.</div>';
-
-  // Mileage stats
-  document.getElementById('nb-mileage-stats').innerHTML = `
-    <div class="stat-box"><div class="stat-box-num">${totalMiles.toFixed(1)}</div><div class="stat-box-label">Total Miles</div></div>
-    <div class="stat-box"><div class="stat-box-num">$${fmtDollar(totalDed)}</div><div class="stat-box-label">Tax Deduction (67¢/mi)</div></div>
-    <div class="stat-box"><div class="stat-box-num">${miles.length}</div><div class="stat-box-label">Trips Logged</div></div>
-  `;
-
-  // Mileage table
-  document.getElementById('nb-mileage-body').innerHTML = miles.slice().reverse().map((m,i)=>`
-    <tr>
-      <td>${m.date||'—'}</td>
-      <td>${m.from||'—'} → ${m.to||'—'}</td>
-      <td>${m.purpose||'—'}</td>
-      <td>${parseFloat(m.miles).toFixed(1)}</td>
-      <td style="color:var(--success);">$${fmtDollar(m.deduction)}</td>
-      <td><button class="btn btn-sm btn-ghost" onclick="deleteNBItem('nb_mileage','${m.id}')" style="padding:2px 7px;">✕</button></td>
-    </tr>`).join('') || '<tr><td colspan="6" style="color:var(--text-muted);">No trips logged.</td></tr>';
-}
-
-function deleteNBItem(key, id) {
-  const items = load(key,[]).filter(x=>x.id!==id);
-  save(key,items);
-  renderNovabooks();
-}
 
 // ══════════════════════════════════════════════════════
 // INFORMATION
