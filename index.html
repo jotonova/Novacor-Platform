@@ -3923,6 +3923,21 @@ function expFilesSelected(evt) {
   });
 }
 
+async function nbBackupDealExpenses(dealId) {
+  // Save a timestamped backup of expenses before any write
+  const r = await fetch('/api/store/nc_active_deals').then(r=>r.json());
+  const deals = JSON.parse(r.value||'[]');
+  const deal = deals.find(d=>d.id===dealId);
+  if(!deal || !deal.expenses?.length) return;
+  const backupKey = `nc_deal_expenses_backup_${dealId}_${Date.now()}`;
+  await fetch(`/api/store/${backupKey}`, {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ value: deal.expenses })
+  });
+  console.log('[Backup] Saved', deal.expenses.length, 'expenses to', backupKey);
+}
+
 function editDealExpense(i) {
   var deals = load('active_deals', []);
   var d = deals.find(function(x){ return x.id === currentDealId; });
@@ -5535,10 +5550,15 @@ qeRenderDealList();
 })();
 
 // ── Bulk Notion Expense Import ────────────────────────────────
-window.bulkImportNotionExpenses = function() {
+window.bulkImportNotionExpenses = async function() {
   var deals = load('active_deals', []);
   var d = deals.find(function(x){ return x.id === currentDealId; });
   if(!d) { alert('No deal open. Open a deal first.'); return; }
+
+  // SAFETY: backup existing expenses before writing
+  if(d.expenses?.length > 0) {
+    await nbBackupDealExpenses(d.id);
+  }
 
   if(!confirm('Bulk import Notion expenses into "' + (d.address||'this deal') + '" Investment Panel?\n\nThis will add 8 expense categories totaling $11,647.98.\n\nMake sure the deal has no existing expenses to avoid duplicates.')) return;
 
