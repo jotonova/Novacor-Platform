@@ -2595,11 +2595,11 @@ label {
   <div class="form-group">
     <label>Upload Receipt / Document</label>
     <div id="exp-upload-area" onclick="document.getElementById('exp-file-input').click()" style="border:2px dashed var(--border);border-radius:6px;padding:14px;text-align:center;cursor:pointer;transition:border-color 0.2s;background:rgba(13,31,60,0.4);">
-      <div style="font-size:1.4rem;margin-bottom:4px;">📎</div>
-      <div style="font-size:0.78rem;color:var(--text-muted);">Click to upload PDF, image, or document</div>
+      <div style="font-size:1.4rem;margin-bottom:4px;">📷</div>
+      <div style="font-size:0.78rem;color:var(--text-muted);">📷 Take Photo / Upload Receipt</div>
       <div id="exp-upload-names" style="margin-top:6px;font-size:0.75rem;color:var(--gold);"></div>
     </div>
-    <input type="file" id="exp-file-input" style="display:none;" multiple accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.txt" onchange="expFilesSelected(event)">
+    <input type="file" id="exp-file-input" style="display:none;" multiple accept="image/*,.pdf" capture="environment" onchange="expFilesSelected(event)">
   </div>
   <div style="display:flex;gap:10px;">
     <button class="btn btn-gold" onclick="saveExpense()">Add Expense</button>
@@ -3041,7 +3041,7 @@ updateDate(); setInterval(updateDate, 60000);
 // ══════════════════════════════════════════════════════
 // DASHBOARD
 // ══════════════════════════════════════════════════════
-async function renderDashboard() {
+function renderDashboard() {
   // Quote
   const q = load('quote', '"People do not decide their futures, people decide their habits and their habits decide their futures." — F.M. Alexander');
   document.getElementById('dashboard-quote').textContent = q;
@@ -3091,35 +3091,6 @@ async function renderDashboard() {
     <div class="stat-box"><div class="stat-box-num">$${fmtNum(totalExp)}</div><div class="stat-box-label">YTD Expenses</div></div>
     <div class="stat-box"><div class="stat-box-num" style="color:${(totalIncome*0.8)>=0?'#2ecc71':'#e74c3c'}">$${fmtNum(totalIncome*0.8)}</div><div class="stat-box-label">Net P&L (after tax)</div></div>
   `;
-
-  // Pull live financials from NovaBooks and overlay on stat boxes
-  try {
-    const year = new Date().getFullYear();
-    const prevYear = year - 1;
-    const [currSum, prevSum] = await Promise.all([
-      fetch(`/api/nb/summary?year=${year}`).then(r=>r.json()).catch(()=>null),
-      fetch(`/api/nb/summary?year=${prevYear}`).then(r=>r.json()).catch(()=>null)
-    ]);
-    const sum = (currSum?.totalExpenses > 0 || currSum?.totalIncome > 0) ? currSum : prevSum;
-    if(sum) {
-      const fmt = n => '$' + Number(n||0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
-      document.querySelectorAll('.stat-box').forEach(box => {
-        const label = box.querySelector('.stat-box-label')?.textContent?.trim();
-        const numEl = box.querySelector('.stat-box-num');
-        if(!numEl) return;
-        if(label === 'YTD Income') {
-          numEl.textContent = fmt(sum.totalIncome);
-          numEl.style.color = '#2ecc71';
-        } else if(label === 'YTD Expenses') {
-          numEl.textContent = fmt(sum.totalExpenses);
-          numEl.style.color = '#e74c3c';
-        } else if(label && label.includes('Net P&L')) {
-          numEl.textContent = fmt(sum.netProfit);
-          numEl.style.color = sum.netProfit >= 0 ? '#2ecc71' : '#e74c3c';
-        }
-      });
-    }
-  } catch(e) { console.error('Dashboard NovaBooks sync:', e); }
 
   // Google widgets
   loadGoogleWidgets();
@@ -3716,10 +3687,10 @@ function renderDealExpenses(d) {
       list.innerHTML = '<div style="color:var(--text-muted);font-size:0.83rem;padding:14px 12px;">No expenses logged yet.</div>';
       return;
     }
-    var header = '<div class="exp-header-row" style="grid-template-columns:1fr 110px 110px auto 36px;"><div>Description</div><div>Line Item</div><div style="text-align:right">Amount</div><div>Date</div><div></div></div>';
+    var header = '<div class="exp-header-row" style="grid-template-columns:1fr 110px 110px auto auto;"><div>Description</div><div>Line Item</div><div style="text-align:right">Amount</div><div>Date</div><div></div></div>';
     var rows2 = exps.map(function(e,i) {
       var cat = e.cat || 'General';
-      return '<div class="expense-row" style="grid-template-columns:1fr 110px 110px auto 36px;">' +
+      return '<div class="expense-row" style="grid-template-columns:1fr 110px 110px auto auto;">' +
         '<div>' +
           '<div style="color:var(--white);">' + (e.desc||'Expense') + '</div>' +
           (e.receipt ? '<div style="font-size:0.72rem;color:var(--text-muted);margin-top:2px;">📎 '+e.receipt+'</div>' : '') +
@@ -3733,7 +3704,10 @@ function renderDealExpenses(d) {
         '<div><span class="exp-cat-badge" style="background:'+expCatColor(e.lineitem||'General')+';color:'+expCatTextColor(e.lineitem||'General')+';">'+( e.lineitem||'Misc' )+'</span></div>' +
         '<div style="text-align:right;color:var(--danger);font-weight:600;">-$'+fmtDollar(e.amount)+'</div>' +
         '<div style="color:var(--text-muted);">'+(e.date||'')+'</div>' +
-        '<button class="btn btn-sm btn-ghost" onclick="deleteDealExpense('+i+')" style="padding:2px 7px;font-size:0.65rem;">✕</button>' +
+        '<div style="display:flex;gap:4px;align-items:center;">' +
+          '<button class="btn btn-sm btn-ghost" onclick="editDealExpense('+i+')" style="padding:2px 7px;font-size:0.65rem;" title="Edit expense">✏️</button>' +
+          '<button class="btn btn-sm btn-ghost" onclick="deleteDealExpense('+i+')" style="padding:2px 7px;font-size:0.65rem;" title="Delete expense">✕</button>' +
+        '</div>' +
       '</div>';
     }).join('');
     list.innerHTML = header + rows2;
@@ -3949,7 +3923,67 @@ function expFilesSelected(evt) {
   });
 }
 
+function editDealExpense(i) {
+  var deals = load('active_deals', []);
+  var d = deals.find(function(x){ return x.id === currentDealId; });
+  if(!d || !d.expenses[i]) return;
+  var e = d.expenses[i];
+  window._editingExpenseIdx = i;
+  document.getElementById('exp-desc').value = e.desc || '';
+  document.getElementById('exp-amount').value = e.amount || '';
+  document.getElementById('exp-date').value = e.date || '';
+  var lineitem = document.getElementById('exp-lineitem');
+  if(lineitem && e.lineitem) lineitem.value = e.lineitem;
+  expPendingFiles = (e.files || []).slice();
+  document.getElementById('exp-upload-names').textContent = e.receipt || '';
+  var modal = document.getElementById('modal-add-expense');
+  if(modal) {
+    modal.classList.remove('hidden');
+    var title = modal.querySelector('.modal-title');
+    if(title) title.textContent = 'Edit Expense';
+    var saveBtn = modal.querySelector('.btn-gold');
+    if(saveBtn) saveBtn.textContent = 'Save Changes';
+  }
+}
+
 function saveExpense() {
+  // Handle editing an existing expense
+  if(window._editingExpenseIdx !== undefined && window._editingExpenseIdx !== null) {
+    var idx = window._editingExpenseIdx;
+    window._editingExpenseIdx = null;
+    var deals = load('active_deals', []);
+    var d = deals.find(function(x){ return x.id === currentDealId; });
+    if(!d || !d.expenses[idx]) return;
+    var fileNames = expPendingFiles.map(function(f){ return f.name; }).join(', ');
+    d.expenses[idx].desc     = document.getElementById('exp-desc').value || 'Expense';
+    d.expenses[idx].lineitem = document.getElementById('exp-lineitem').value;
+    d.expenses[idx].amount   = document.getElementById('exp-amount').value;
+    d.expenses[idx].date     = document.getElementById('exp-date').value;
+    if(expPendingFiles.length) {
+      d.expenses[idx].receipt = fileNames;
+      d.expenses[idx].files   = expPendingFiles.slice();
+    }
+    save('active_deals', deals);
+    closeModal('modal-add-expense');
+    ['exp-desc','exp-amount','exp-date'].forEach(function(id){ document.getElementById(id).value=''; });
+    document.getElementById('exp-upload-names').textContent = '';
+    document.getElementById('exp-upload-area').style.borderColor = 'var(--border)';
+    document.getElementById('exp-file-input').value = '';
+    expPendingFiles = [];
+    // Reset modal title
+    var modal = document.getElementById('modal-add-expense');
+    if(modal) {
+      var title = modal.querySelector('.modal-title');
+      if(title) title.textContent = 'Add Expense';
+      var saveBtn = modal.querySelector('.btn-gold');
+      if(saveBtn) saveBtn.textContent = 'Add Expense';
+    }
+    renderDealExpenses(d);
+    renderDashboard();
+    toast('Expense updated!');
+    return;
+  }
+
   var deals = load('active_deals', []);
   var d = deals.find(function(x){return x.id===currentDealId;});
   if(!d) return;
