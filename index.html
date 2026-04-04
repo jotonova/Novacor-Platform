@@ -2123,9 +2123,16 @@ label {
 
   <!-- ── DEALS ── -->
   <div id="nb-deals" class="nb-section" style="display:none;padding:0 32px;">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
       <div style="font-size:0.82rem;color:var(--text-muted);">Track expenses per property deal</div>
       <button onclick="nbOpenDealModal()" style="padding:8px 18px;background:var(--gold);color:var(--navy);border:none;border-radius:6px;font-weight:700;font-size:0.78rem;cursor:pointer;">+ Add Deal</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;padding:12px 14px;background:rgba(201,168,76,0.06);border:1px solid rgba(201,168,76,0.2);border-radius:8px;">
+      <span style="font-size:0.78rem;color:var(--text-muted);white-space:nowrap;">Import from Dashboard:</span>
+      <select id="nb-dashboard-deal-select" style="flex:1;padding:6px 10px;background:var(--surface);color:var(--white);border:1px solid var(--border);border-radius:5px;font-size:0.78rem;">
+        <option value="">— select a deal —</option>
+      </select>
+      <button onclick="nbImportSelectedDeal()" style="padding:7px 16px;background:var(--gold);color:var(--navy);border:none;border-radius:5px;font-weight:700;font-size:0.75rem;cursor:pointer;white-space:nowrap;">📒 Import Expenses</button>
     </div>
     <div id="nb-deals-list" style="display:flex;flex-direction:column;gap:14px;"></div>
   </div>
@@ -2517,6 +2524,7 @@ label {
         <button class="btn btn-sm btn-outline" id="exp-link-qe-btn" onclick="openLinkQualEfi()">🔗 Link Qual-Efi</button>
         <button class="btn btn-sm btn-outline" id="exp-export-btn" onclick="exportExpenseReport()" style="display:none;">📄 Export Report</button>
         <button class="btn btn-sm btn-outline" onclick="openAddExpense()">+ Add Expense</button>
+        <button class="btn btn-sm btn-outline" onclick="nbImportFromDeal(currentDeal)" style="color:var(--gold);border-color:rgba(201,168,76,0.4);">📒 → NovaBooks</button>
       </div>
     </div>
     <div id="exp-qe-linked-bar" style="display:none;align-items:center;justify-content:space-between;padding:7px 11px;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.25);border-radius:6px;margin-bottom:10px;font-size:0.78rem;">
@@ -5986,6 +5994,7 @@ qeRenderDealList();
 
   // ── Deals ────────────────────────────────────────────────────
   window.nbLoadDeals = async function() {
+    nbPopulateDashboardDeals();
     const [deals, txns] = await Promise.all([
       fetch('/api/nb/deals').then(r=>r.json()),
       fetch('/api/nb/transactions').then(r=>r.json())
@@ -6532,6 +6541,103 @@ qeRenderDealList();
         $('nb-report-output').innerHTML='<div style="padding:14px 18px;background:rgba(46,204,113,0.1);border:1px solid rgba(46,204,113,0.3);border-radius:6px;font-size:0.82rem;color:#2ecc71;">Report emailed to novacor.icaz@gmail.com!</div>';
       }catch(e){alert('Email error: '+e.message);}
     }
+  };
+
+  // ── Dashboard Deal Import ─────────────────────────────────────
+  function nbPopulateDashboardDeals() {
+    const sel = document.getElementById('nb-dashboard-deal-select');
+    if(!sel) return;
+    const deals = JSON.parse(localStorage.getItem('active_deals') || '[]');
+    sel.innerHTML = '<option value="">— select a deal —</option>' +
+      deals.map((d,i) => `<option value="${i}">${d.address || 'Deal ' + (i+1)}</option>`).join('');
+  }
+
+  window.nbImportSelectedDeal = async function() {
+    const sel = document.getElementById('nb-dashboard-deal-select');
+    if(!sel || sel.value === '') { alert('Please select a deal to import.'); return; }
+    const deals = JSON.parse(localStorage.getItem('active_deals') || '[]');
+    const deal = deals[parseInt(sel.value)];
+    if(!deal) { alert('Deal not found.'); return; }
+    await window.nbImportFromDeal(deal);
+  };
+
+  window.nbImportFromDeal = async function(deal) {
+    if(!deal) { alert('No deal selected.'); return; }
+    const exps = deal.expenses || [];
+    if(!exps.length) { alert('No expenses found on this deal.'); return; }
+    if(!confirm(`Import ${exps.length} expense(s) from "${deal.address}" into NovaBooks?\n\nDuplicates will be skipped.`)) return;
+
+    // Get accounts — prefer checking account, fall back to first
+    let accts = [];
+    try { accts = await fetch('/api/nb/accounts').then(r=>r.json()); } catch(e) {}
+    const acct = accts.find(a=>a.type==='checking') || accts.find(a=>a.type==='credit_card') || accts[0];
+    const acctId = acct ? acct.id : null;
+
+    // Category map from deal line items → NovaBooks categories
+    const catMap = {
+      'Kitchen':'Rehab — Materials','Bathroom':'Rehab — Materials',
+      'Flooring':'Rehab — Materials','Paint':'Rehab — Materials',
+      'Lighting/Fixtures':'Rehab — Materials','Materials':'Rehab — Materials',
+      'Labor':'Rehab — Labor','Interior':'Rehab — Labor',
+      'Permits':'Rehab — Permits','Insurance':'Carrying — Insurance',
+      'Holding Costs':'Carrying — Mortgage/Interest',
+      'Misc':'Miscellaneous','General':'Miscellaneous','Other':'Miscellaneous'
+    };
+
+    // Ensure deal exists in NovaBooks
+    let nbDeals = [];
+    try { nbDeals = await fetch('/api/nb/deals').then(r=>r.json()); } catch(e) {}
+    let nbDeal = nbDeals.find(d => d.address === deal.address);
+    if(!nbDeal) {
+      const res = await fetch('/api/nb/deals', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          address: deal.address,
+          status: 'active',
+          purchase_date: deal.coe || null,
+          purchase_price: parseFloat(deal.price) || 0,
+          notes: 'Imported from Dashboard'
+        })
+      });
+      const created = await res.json();
+      nbDeal = created;
+    }
+
+    // Get existing transactions for this deal to dedupe
+    let existingTxns = [];
+    try { existingTxns = await fetch('/api/nb/transactions').then(r=>r.json()); } catch(e) {}
+    const dealTxns = existingTxns.filter(t => t.deal_id === nbDeal.id);
+
+    let imported = 0, skipped = 0;
+    for(const exp of exps) {
+      const amount = parseFloat(exp.amount || 0);
+      const date = exp.date || deal.coe || new Date().toISOString().slice(0,10);
+      const vendor = exp.desc || exp.lineitem || exp.cat || 'Expense';
+      const cat = catMap[exp.lineitem || exp.cat] || 'Miscellaneous';
+
+      // Dedupe check
+      const dup = dealTxns.find(t =>
+        Math.abs(parseFloat(t.amount) - amount) < 0.02 &&
+        t.date === date &&
+        (t.vendor || '').toLowerCase() === vendor.toLowerCase()
+      );
+      if(dup) { skipped++; continue; }
+
+      const id = 'txn_dash_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
+      await fetch('/api/nb/transactions', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          id, date, account_id: acctId, deal_id: nbDeal.id,
+          vendor, category: cat, amount, type:'expense',
+          description: `[Dashboard Import] ${vendor}`, tax_deductible: 1
+        })
+      });
+      imported++;
+    }
+
+    alert(`Import complete!\n✅ ${imported} imported\n⏭ ${skipped} skipped (duplicates)`);
+    nbLoadDeals();
+    nbLoadDashboard();
   };
 
   // ── Init ─────────────────────────────────────────────────────
