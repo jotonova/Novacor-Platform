@@ -337,10 +337,33 @@ async function getAuthedClient(req) {
   if (!tokens) return null;
   const auth = makeOAuth2Client(req);
   auth.setCredentials(tokens);
+
   // Persist any refreshed tokens automatically
   auth.on('tokens', async (refreshed) => {
-    await saveTokens({ ...tokens, ...refreshed });
+    const merged = { ...tokens, ...refreshed };
+    await saveTokens(merged);
+    auth.setCredentials(merged);
   });
+
+  // Proactively refresh if access token is expired or about to expire (within 5 min)
+  const expiryDate = tokens.expiry_date;
+  const isExpired = expiryDate ? Date.now() >= expiryDate - 5 * 60 * 1000 : false;
+
+  if (isExpired && tokens.refresh_token) {
+    try {
+      console.log('[Google OAuth] Access token expired — refreshing proactively...');
+      const { credentials } = await auth.refreshAccessToken();
+      const merged = { ...tokens, ...credentials };
+      await saveTokens(merged);
+      auth.setCredentials(merged);
+      console.log('[Google OAuth] Token refreshed successfully. New expiry:', new Date(merged.expiry_date).toISOString());
+    } catch (e) {
+      console.error('[Google OAuth] Proactive refresh failed:', e.message);
+      // Return null so the caller gets a clean not_authenticated error instead of hanging
+      return null;
+    }
+  }
+
   return auth;
 }
 
