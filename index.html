@@ -6484,9 +6484,9 @@ qeRenderDealList();
       $('nb-report-output').innerHTML='<div style="padding:14px 18px;background:rgba(46,204,113,0.1);border:1px solid rgba(46,204,113,0.3);border-radius:6px;font-size:0.82rem;color:#2ecc71;">✅ Report opened in new window — use Print to save as PDF or print!</div>';
     } else if(outputType==='email'){
       try{
-        await fetch('/api/google/gmail/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:'novacor.icaz@gmail.com',subject:`📊 NovaBooks Report — Novacor LLC | ${periodLabel}`,body:`NovaBooks report for ${periodLabel}\n\nTotal Income: ${fmt(totalIncome)}\nTotal Expenses: ${fmt(totalExpenses)}\nNet Profit: ${fmt(netProfit)}\nEst. Tax Owed: ${fmt(estTax)}`})});
-        alert('✅ Report summary emailed to novacor.icaz@gmail.com!');
-        $('nb-report-output').innerHTML='<div style="padding:14px 18px;background:rgba(46,204,113,0.1);border:1px solid rgba(46,204,113,0.3);border-radius:6px;font-size:0.82rem;color:#2ecc71;">✅ Report emailed to novacor.icaz@gmail.com!</div>';
+        await fetch('/api/google/gmail/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:'novacor.icaz@gmail.com',subject:`NovaBooks Report - Novacor LLC | ${periodLabel}`,body:reportHTML})});
+        alert('Report emailed to novacor.icaz@gmail.com!');
+        $('nb-report-output').innerHTML='<div style="padding:14px 18px;background:rgba(46,204,113,0.1);border:1px solid rgba(46,204,113,0.3);border-radius:6px;font-size:0.82rem;color:#2ecc71;">Report emailed to novacor.icaz@gmail.com!</div>';
       }catch(e){alert('Email error: '+e.message);}
     }
   };

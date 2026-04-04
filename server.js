@@ -950,7 +950,7 @@ async function sendNovaBooksSummaryEmail(req) {
     const rawEmail = [
       `To: novacor.icaz@gmail.com`,
       `From: Novacor Platform <novacor.icaz@gmail.com>`,
-      `Subject: 📊 NovaBooks Weekly — Novacor LLC | Week of ${weekOf}`,
+      `Subject: NovaBooks Weekly Report - Novacor LLC | Week of ${weekOf}`,
       `MIME-Version: 1.0`,
       `Content-Type: text/html; charset=utf-8`,
       ``,
