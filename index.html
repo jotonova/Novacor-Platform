@@ -5569,6 +5569,16 @@ qeRenderDealList();
       <input type="checkbox" id="nb-txn-taxdeduct" checked style="accent-color:var(--gold);">
       <label for="nb-txn-taxdeduct" style="font-size:0.78rem;color:var(--text-muted);cursor:pointer;">Tax deductible</label>
     </div>
+    <!-- Receipt upload — shown when editing -->
+    <div id="nb-txn-receipt-section" style="display:none;margin-top:16px;">
+      <label class="nb-label">Receipt</label>
+      <div id="nb-txn-existing-receipt"></div>
+      <div style="margin-top:8px;display:flex;align-items:center;gap:10px;">
+        <input type="file" id="nb-txn-receipt-file" accept="image/*,.pdf" style="display:none;" onchange="nbHandleReceiptUpload(this)">
+        <button type="button" onclick="$('nb-txn-receipt-file').click()" style="padding:7px 16px;background:transparent;border:1px solid var(--border);border-radius:4px;color:var(--text-muted);font-size:0.75rem;cursor:pointer;">📎 Attach Receipt</button>
+        <span id="nb-txn-receipt-name" style="font-size:0.72rem;color:var(--text-muted);"></span>
+      </div>
+    </div>
     <div class="nb-footer">
       <button class="nb-btn-cancel" onclick="nbCloseModal('nb-txn-modal')">Cancel</button>
       <button class="nb-btn-save" onclick="nbSaveTxn()">Save</button>
@@ -5872,17 +5882,39 @@ qeRenderDealList();
     $('nb-txn-desc').value='';
     $('nb-txn-taxdeduct').checked=true;
     nbPopulateTxnModal();
+    // Hide receipt section for new transactions
+    const rs=$('nb-txn-receipt-section');
+    if(rs) rs.style.display='none';
+    window._nbReceiptFile=null;
     nbOpenModal('nb-txn-modal');
     setTimeout(()=>$('nb-txn-vendor').focus(),50);
   };
 
   $('nb-txn-type').addEventListener('change',()=>{ $('nb-txn-category').innerHTML=NB_CATEGORIES[$('nb-txn-type').value].map(c=>`<option value="${c}">${c}</option>`).join(''); });
 
+  window.nbHandleReceiptUpload = function(input) {
+    const file = input.files[0];
+    if(!file) return;
+    $('nb-txn-receipt-name').textContent = file.name;
+    // Store file reference for save
+    window._nbReceiptFile = file;
+  };
+
   window.nbSaveTxn = async function() {
     const amount=parseFloat($('nb-txn-amount').value);
     if(!$('nb-txn-date').value||!amount||!$('nb-txn-account').value){alert('Date, account, and amount are required.');return;}
     const id=$('nb-txn-id').value;
-    const body={date:$('nb-txn-date').value,account_id:$('nb-txn-account').value,deal_id:$('nb-txn-deal').value||null,vendor:$('nb-txn-vendor').value,category:$('nb-txn-category').value,amount,type:$('nb-txn-type').value,description:$('nb-txn-desc').value,tax_deductible:$('nb-txn-taxdeduct').checked?1:0};
+    // Handle receipt — convert to base64 data URL for storage
+    let receipt_url = null;
+    if(window._nbReceiptFile) {
+      receipt_url = await new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onload = e => resolve(e.target.result);
+        reader.readAsDataURL(window._nbReceiptFile);
+      });
+      window._nbReceiptFile = null;
+    }
+    const body={date:$('nb-txn-date').value,account_id:$('nb-txn-account').value,deal_id:$('nb-txn-deal').value||null,vendor:$('nb-txn-vendor').value,category:$('nb-txn-category').value,amount,type:$('nb-txn-type').value,description:$('nb-txn-desc').value,tax_deductible:$('nb-txn-taxdeduct').checked?1:0,...(receipt_url?{receipt_url}:{})};
     if(id) await fetch(`/api/nb/transactions/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     else await fetch('/api/nb/transactions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     nbCloseModal('nb-txn-modal');
@@ -5931,6 +5963,17 @@ qeRenderDealList();
     $('nb-txn-amount').value=t.amount;
     $('nb-txn-desc').value=t.description||'';
     $('nb-txn-taxdeduct').checked=!!t.tax_deductible;
+    // Show receipt section if editing
+    const receiptSection=$('nb-txn-receipt-section');
+    if(receiptSection){
+      receiptSection.style.display='block';
+      const existing=$('nb-txn-existing-receipt');
+      if(existing){
+        existing.innerHTML=t.receipt_url
+          ?`<div style="margin-top:6px;"><a href="${t.receipt_url}" target="_blank" style="color:var(--gold);font-size:0.78rem;">📎 View current receipt</a></div>`
+          :'<div style="font-size:0.72rem;color:var(--text-muted);margin-top:4px;">No receipt attached yet</div>';
+      }
+    }
     nbOpenModal('nb-txn-modal');
   };
 
