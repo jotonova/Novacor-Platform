@@ -2524,7 +2524,8 @@ label {
         <button class="btn btn-sm btn-outline" id="exp-link-qe-btn" onclick="openLinkQualEfi()">🔗 Link Qual-Efi</button>
         <button class="btn btn-sm btn-outline" id="exp-export-btn" onclick="exportExpenseReport()" style="display:none;">📄 Export Report</button>
         <button class="btn btn-sm btn-outline" onclick="openAddExpense()">+ Add Expense</button>
-        <button class="btn btn-sm btn-outline" onclick="nbImportFromDeal(currentDeal)" style="color:var(--gold);border-color:rgba(201,168,76,0.4);">📒 → NovaBooks</button>
+        <button class="btn btn-sm btn-outline" onclick="bulkImportNotionExpenses()" title="Import 4455 Roosevelt Notion expenses into this deal" style="color:#c084fc;border-color:rgba(192,132,252,0.4);">📒 Notion Import</button>
+        <button class="btn btn-sm btn-outline" onclick="nbImportFromDeal(load('active_deals',[]).find(x=>x.id===currentDealId))" style="color:var(--gold);border-color:rgba(201,168,76,0.4);">📒 → NovaBooks</button>
       </div>
     </div>
     <div id="exp-qe-linked-bar" style="display:none;align-items:center;justify-content:space-between;padding:7px 11px;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.25);border-radius:6px;margin-bottom:10px;font-size:0.78rem;">
@@ -5466,6 +5467,43 @@ qeSyncRental();
 qeCalcWholesale();
 qeRenderDealList();
 })();
+
+// ── Bulk Notion Expense Import ────────────────────────────────
+window.bulkImportNotionExpenses = function() {
+  var deals = load('active_deals', []);
+  var d = deals.find(function(x){ return x.id === currentDealId; });
+  if(!d) { alert('No deal open. Open a deal first.'); return; }
+
+  if(!confirm('Bulk import Notion expenses into "' + (d.address||'this deal') + '" Investment Panel?\n\nThis will add 8 expense categories totaling $11,647.98.\n\nMake sure the deal has no existing expenses to avoid duplicates.')) return;
+
+  var notionExpenses = [
+    { lineitem: 'Kitchen',           desc: 'Kitchen (Notion Import)',           amount: 1222.19, date: '2025-11-20' },
+    { lineitem: 'Lighting/Fixtures', desc: 'Lighting/Fixtures (Notion Import)', amount: 325.95,  date: '2025-11-20' },
+    { lineitem: 'Bathroom',          desc: 'Bathroom (Notion Import)',           amount: 1196.65, date: '2025-11-20' },
+    { lineitem: 'Flooring',          desc: 'Flooring (Notion Import)',           amount: 946.35,  date: '2025-11-20' },
+    { lineitem: 'Paint',             desc: 'Paint (Notion Import)',              amount: 1006.66, date: '2025-11-20' },
+    { lineitem: 'Holding Costs',     desc: 'Holding Costs (Notion Import)',      amount: 3176.16, date: '2025-11-20' },
+    { lineitem: 'Interior',          desc: 'Interior (Notion Import)',           amount: 3123.02, date: '2025-11-20' },
+    { lineitem: 'Misc',              desc: 'Misc (Notion Import)',               amount: 651.00,  date: '2025-11-20' },
+  ];
+
+  if(!d.expenses) d.expenses = [];
+  notionExpenses.forEach(function(exp) {
+    d.expenses.push({
+      desc:     exp.desc,
+      lineitem: exp.lineitem,
+      amount:   exp.amount,
+      date:     exp.date,
+      receipt:  '',
+      files:    []
+    });
+  });
+
+  save('active_deals', deals);
+  renderDealExpenses(d);
+  renderDashboard();
+  toast('📒 8 Notion expenses imported! Total: $11,647.98');
+};
 </script>
 
 <!-- Gmail Compose Modal -->
