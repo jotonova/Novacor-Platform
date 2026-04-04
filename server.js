@@ -635,6 +635,325 @@ app.delete('/api/tasks/:id', async (req, res) => {
   } catch (e) { console.error('[Tasks DELETE]', e.message); res.status(500).json({ error: e.message }); }
 });
 
+// ── Novabooks API ─────────────────────────────────────────────────────────────
+
+// Create all Novabooks tables
+await db.execute(`CREATE TABLE IF NOT EXISTS nb_accounts (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL,
+  institution TEXT DEFAULT '',
+  last4 TEXT DEFAULT '',
+  opening_balance REAL DEFAULT 0,
+  opening_date TEXT DEFAULT '',
+  is_active INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now'))
+)`);
+
+await db.execute(`CREATE TABLE IF NOT EXISTS nb_transactions (
+  id TEXT PRIMARY KEY,
+  date TEXT NOT NULL,
+  account_id TEXT NOT NULL,
+  deal_id TEXT DEFAULT NULL,
+  vendor TEXT DEFAULT '',
+  category TEXT NOT NULL,
+  amount REAL NOT NULL,
+  type TEXT NOT NULL,
+  description TEXT DEFAULT '',
+  receipt_url TEXT DEFAULT NULL,
+  is_reconciled INTEGER DEFAULT 0,
+  is_recurring INTEGER DEFAULT 0,
+  tax_deductible INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now'))
+)`);
+
+await db.execute(`CREATE TABLE IF NOT EXISTS nb_mileage (
+  id TEXT PRIMARY KEY,
+  date TEXT NOT NULL,
+  from_location TEXT NOT NULL,
+  to_location TEXT NOT NULL,
+  purpose TEXT NOT NULL,
+  miles REAL NOT NULL,
+  deal_id TEXT DEFAULT NULL,
+  rate REAL DEFAULT 0.67,
+  created_at TEXT DEFAULT (datetime('now'))
+)`);
+
+await db.execute(`CREATE TABLE IF NOT EXISTS nb_vendors (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  company TEXT DEFAULT '',
+  phone TEXT DEFAULT '',
+  email TEXT DEFAULT '',
+  address TEXT DEFAULT '',
+  ein_ssn TEXT DEFAULT '',
+  notes TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now'))
+)`);
+
+await db.execute(`CREATE TABLE IF NOT EXISTS nb_tax_payments (
+  id TEXT PRIMARY KEY,
+  quarter TEXT NOT NULL,
+  year INTEGER NOT NULL,
+  amount REAL NOT NULL,
+  payment_date TEXT NOT NULL,
+  confirmation TEXT DEFAULT '',
+  notes TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now'))
+)`);
+
+await db.execute(`CREATE TABLE IF NOT EXISTS nb_deals (
+  id TEXT PRIMARY KEY,
+  address TEXT NOT NULL,
+  status TEXT DEFAULT 'active',
+  purchase_date TEXT DEFAULT NULL,
+  purchase_price REAL DEFAULT 0,
+  sale_date TEXT DEFAULT NULL,
+  sale_price REAL DEFAULT 0,
+  notes TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now'))
+)`);
+
+// ── Novabooks: Accounts ──────────────────────────────────────────────────────
+app.get('/api/nb/accounts', async (req, res) => {
+  try {
+    const r = await db.execute('SELECT * FROM nb_accounts ORDER BY created_at ASC');
+    res.json(r.rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/nb/accounts', async (req, res) => {
+  try {
+    const { name, type, institution, last4, opening_balance, opening_date } = req.body;
+    if (!name || !type) return res.status(400).json({ error: 'name and type required' });
+    const id = `acct_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+    await db.execute({ sql: 'INSERT INTO nb_accounts (id,name,type,institution,last4,opening_balance,opening_date) VALUES (?,?,?,?,?,?,?)', args: [id, name, type, institution||'', last4||'', opening_balance||0, opening_date||''] });
+    const r = await db.execute({ sql: 'SELECT * FROM nb_accounts WHERE id=?', args: [id] });
+    res.json(r.rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/nb/accounts/:id', async (req, res) => {
+  try {
+    const allowed = ['name','type','institution','last4','opening_balance','opening_date','is_active'];
+    const fields = [], args = [];
+    for (const k of allowed) { if (req.body[k] !== undefined) { fields.push(`${k}=?`); args.push(req.body[k]); } }
+    if (!fields.length) return res.status(400).json({ error: 'nothing to update' });
+    args.push(req.params.id);
+    await db.execute({ sql: `UPDATE nb_accounts SET ${fields.join(',')} WHERE id=?`, args });
+    const r = await db.execute({ sql: 'SELECT * FROM nb_accounts WHERE id=?', args: [req.params.id] });
+    res.json(r.rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/nb/accounts/:id', async (req, res) => {
+  try {
+    await db.execute({ sql: 'DELETE FROM nb_accounts WHERE id=?', args: [req.params.id] });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Novabooks: Transactions ──────────────────────────────────────────────────
+app.get('/api/nb/transactions', async (req, res) => {
+  try {
+    const { account_id, deal_id, category, type, start_date, end_date, search, year } = req.query;
+    let sql = 'SELECT * FROM nb_transactions WHERE 1=1';
+    const args = [];
+    if (account_id) { sql += ' AND account_id=?'; args.push(account_id); }
+    if (deal_id) { sql += ' AND deal_id=?'; args.push(deal_id); }
+    if (category) { sql += ' AND category=?'; args.push(category); }
+    if (type) { sql += ' AND type=?'; args.push(type); }
+    if (start_date) { sql += ' AND date>=?'; args.push(start_date); }
+    if (end_date) { sql += ' AND date<=?'; args.push(end_date); }
+    if (year) { sql += " AND strftime('%Y', date)=?"; args.push(year); }
+    if (search) { sql += ' AND (vendor LIKE ? OR description LIKE ? OR category LIKE ?)'; args.push(`%${search}%`,`%${search}%`,`%${search}%`); }
+    sql += ' ORDER BY date DESC, created_at DESC';
+    const r = await db.execute({ sql, args });
+    res.json(r.rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/nb/transactions', async (req, res) => {
+  try {
+    const { date, account_id, deal_id, vendor, category, amount, type, description, receipt_url, is_recurring, tax_deductible } = req.body;
+    if (!date || !account_id || !category || amount == null || !type) return res.status(400).json({ error: 'date, account_id, category, amount, type required' });
+    const id = `txn_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+    await db.execute({ sql: 'INSERT INTO nb_transactions (id,date,account_id,deal_id,vendor,category,amount,type,description,receipt_url,is_recurring,tax_deductible) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', args: [id, date, account_id, deal_id||null, vendor||'', category, amount, type, description||'', receipt_url||null, is_recurring?1:0, tax_deductible!=null?tax_deductible:1] });
+    const r = await db.execute({ sql: 'SELECT * FROM nb_transactions WHERE id=?', args: [id] });
+    res.json(r.rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/nb/transactions/:id', async (req, res) => {
+  try {
+    const allowed = ['date','account_id','deal_id','vendor','category','amount','type','description','receipt_url','is_reconciled','is_recurring','tax_deductible'];
+    const fields = [], args = [];
+    for (const k of allowed) { if (req.body[k] !== undefined) { fields.push(`${k}=?`); args.push(req.body[k]); } }
+    if (!fields.length) return res.status(400).json({ error: 'nothing to update' });
+    args.push(req.params.id);
+    await db.execute({ sql: `UPDATE nb_transactions SET ${fields.join(',')} WHERE id=?`, args });
+    const r = await db.execute({ sql: 'SELECT * FROM nb_transactions WHERE id=?', args: [req.params.id] });
+    res.json(r.rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/nb/transactions/:id', async (req, res) => {
+  try {
+    await db.execute({ sql: 'DELETE FROM nb_transactions WHERE id=?', args: [req.params.id] });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Novabooks: Mileage ───────────────────────────────────────────────────────
+app.get('/api/nb/mileage', async (req, res) => {
+  try {
+    const { year } = req.query;
+    let sql = 'SELECT * FROM nb_mileage WHERE 1=1';
+    const args = [];
+    if (year) { sql += " AND strftime('%Y',date)=?"; args.push(year); }
+    sql += ' ORDER BY date DESC';
+    const r = await db.execute({ sql, args });
+    res.json(r.rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/nb/mileage', async (req, res) => {
+  try {
+    const { date, from_location, to_location, purpose, miles, deal_id, rate } = req.body;
+    if (!date || !from_location || !to_location || !purpose || !miles) return res.status(400).json({ error: 'all fields required' });
+    const id = `mil_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+    await db.execute({ sql: 'INSERT INTO nb_mileage (id,date,from_location,to_location,purpose,miles,deal_id,rate) VALUES (?,?,?,?,?,?,?,?)', args: [id, date, from_location, to_location, purpose, miles, deal_id||null, rate||0.67] });
+    const r = await db.execute({ sql: 'SELECT * FROM nb_mileage WHERE id=?', args: [id] });
+    res.json(r.rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/nb/mileage/:id', async (req, res) => {
+  try {
+    await db.execute({ sql: 'DELETE FROM nb_mileage WHERE id=?', args: [req.params.id] });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Novabooks: Vendors ───────────────────────────────────────────────────────
+app.get('/api/nb/vendors', async (req, res) => {
+  try {
+    const r = await db.execute('SELECT * FROM nb_vendors ORDER BY name ASC');
+    res.json(r.rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/nb/vendors', async (req, res) => {
+  try {
+    const { name, company, phone, email, address, ein_ssn, notes } = req.body;
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const id = `vnd_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+    await db.execute({ sql: 'INSERT INTO nb_vendors (id,name,company,phone,email,address,ein_ssn,notes) VALUES (?,?,?,?,?,?,?,?)', args: [id, name, company||'', phone||'', email||'', address||'', ein_ssn||'', notes||''] });
+    const r = await db.execute({ sql: 'SELECT * FROM nb_vendors WHERE id=?', args: [id] });
+    res.json(r.rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/nb/vendors/:id', async (req, res) => {
+  try {
+    const allowed = ['name','company','phone','email','address','ein_ssn','notes'];
+    const fields = [], args = [];
+    for (const k of allowed) { if (req.body[k] !== undefined) { fields.push(`${k}=?`); args.push(req.body[k]); } }
+    if (!fields.length) return res.status(400).json({ error: 'nothing to update' });
+    args.push(req.params.id);
+    await db.execute({ sql: `UPDATE nb_vendors SET ${fields.join(',')} WHERE id=?`, args });
+    const r = await db.execute({ sql: 'SELECT * FROM nb_vendors WHERE id=?', args: [req.params.id] });
+    res.json(r.rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/nb/vendors/:id', async (req, res) => {
+  try {
+    await db.execute({ sql: 'DELETE FROM nb_vendors WHERE id=?', args: [req.params.id] });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Novabooks: Tax Payments ──────────────────────────────────────────────────
+app.get('/api/nb/tax-payments', async (req, res) => {
+  try {
+    const r = await db.execute('SELECT * FROM nb_tax_payments ORDER BY year DESC, quarter ASC');
+    res.json(r.rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/nb/tax-payments', async (req, res) => {
+  try {
+    const { quarter, year, amount, payment_date, confirmation, notes } = req.body;
+    if (!quarter || !year || !amount || !payment_date) return res.status(400).json({ error: 'quarter, year, amount, payment_date required' });
+    const id = `tax_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+    await db.execute({ sql: 'INSERT INTO nb_tax_payments (id,quarter,year,amount,payment_date,confirmation,notes) VALUES (?,?,?,?,?,?,?)', args: [id, quarter, year, amount, payment_date, confirmation||'', notes||''] });
+    const r = await db.execute({ sql: 'SELECT * FROM nb_tax_payments WHERE id=?', args: [id] });
+    res.json(r.rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/nb/tax-payments/:id', async (req, res) => {
+  try {
+    await db.execute({ sql: 'DELETE FROM nb_tax_payments WHERE id=?', args: [req.params.id] });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Novabooks: Deals ─────────────────────────────────────────────────────────
+app.get('/api/nb/deals', async (req, res) => {
+  try {
+    const r = await db.execute("SELECT * FROM nb_deals ORDER BY created_at DESC");
+    res.json(r.rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/nb/deals', async (req, res) => {
+  try {
+    const { address, status, purchase_date, purchase_price, sale_date, sale_price, notes } = req.body;
+    if (!address) return res.status(400).json({ error: 'address required' });
+    const id = `deal_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+    await db.execute({ sql: 'INSERT INTO nb_deals (id,address,status,purchase_date,purchase_price,sale_date,sale_price,notes) VALUES (?,?,?,?,?,?,?,?)', args: [id, address, status||'active', purchase_date||null, purchase_price||0, sale_date||null, sale_price||0, notes||''] });
+    const r = await db.execute({ sql: 'SELECT * FROM nb_deals WHERE id=?', args: [id] });
+    res.json(r.rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/nb/deals/:id', async (req, res) => {
+  try {
+    const allowed = ['address','status','purchase_date','purchase_price','sale_date','sale_price','notes'];
+    const fields = [], args = [];
+    for (const k of allowed) { if (req.body[k] !== undefined) { fields.push(`${k}=?`); args.push(req.body[k]); } }
+    if (!fields.length) return res.status(400).json({ error: 'nothing to update' });
+    args.push(req.params.id);
+    await db.execute({ sql: `UPDATE nb_deals SET ${fields.join(',')} WHERE id=?`, args });
+    const r = await db.execute({ sql: 'SELECT * FROM nb_deals WHERE id=?', args: [req.params.id] });
+    res.json(r.rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Novabooks: Summary (dashboard stats) ────────────────────────────────────
+app.get('/api/nb/summary', async (req, res) => {
+  try {
+    const { year } = req.query;
+    const y = year || new Date().getFullYear().toString();
+    const txns = await db.execute({ sql: "SELECT type, category, amount, tax_deductible FROM nb_transactions WHERE strftime('%Y',date)=?", args: [y] });
+    let totalIncome = 0, totalExpenses = 0;
+    const byCategory = {};
+    for (const t of txns.rows) {
+      if (t.type === 'income') totalIncome += t.amount;
+      else { totalExpenses += t.amount; byCategory[t.category] = (byCategory[t.category]||0) + t.amount; }
+    }
+    const netProfit = totalIncome - totalExpenses;
+    const seTax = netProfit > 0 ? netProfit * 0.9235 * 0.153 : 0;
+    const fedTax = netProfit > 0 ? netProfit * 0.22 : 0;
+    const estimatedTaxOwed = seTax + fedTax;
+    const mileage = await db.execute({ sql: "SELECT SUM(miles) as miles, SUM(miles*rate) as deduction FROM nb_mileage WHERE strftime('%Y',date)=?", args: [y] });
+    const taxPaid = await db.execute({ sql: 'SELECT SUM(amount) as paid FROM nb_tax_payments WHERE year=?', args: [y] });
+    res.json({ year: y, totalIncome, totalExpenses, netProfit, estimatedTaxOwed, seTax, fedTax, mileageMiles: mileage.rows[0].miles||0, mileageDeduction: mileage.rows[0].deduction||0, taxPaid: taxPaid.rows[0].paid||0, byCategory });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // DELETE /api/google/calendar/:eventId — delete event
 app.delete('/api/google/calendar/:eventId', async (req, res) => {
   try {
