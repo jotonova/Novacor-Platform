@@ -1211,6 +1211,10 @@ label {
       <div><label class="tm-label">Date</label><input type="date" id="tmDate"></div>
       <div><label class="tm-label">Time (optional)</label><input type="time" id="tmTime"></div>
     </div>
+    <div style="margin-top:16px;display:flex;align-items:center;gap:10px;">
+      <input type="checkbox" id="tmSendToCal" style="width:16px;height:16px;accent-color:var(--gold);cursor:pointer;">
+      <label for="tmSendToCal" style="font-size:0.78rem;color:var(--text-muted);cursor:pointer;user-select:none;">📅 Also send to Google Calendar <span style="font-size:0.68rem;opacity:0.6;">(requires time)</span></label>
+    </div>
     <div class="tm-footer">
       <button class="tm-cancel" onclick="tasksCloseModal()">Cancel</button>
       <button class="tm-save" onclick="tasksSaveNew()">Save Task</button>
@@ -1312,6 +1316,7 @@ label {
     document.getElementById('tmTitle').value='';
     document.getElementById('tmDesc').value='';
     document.getElementById('tmTime').value='';
+    document.getElementById('tmSendToCal').checked=false;
     document.getElementById('tmDate').value=dateStr;
     document.getElementById('taskModalOverlay').classList.add('open');
     setTimeout(()=>document.getElementById('tmTitle').focus(),50);
@@ -1321,6 +1326,7 @@ label {
     document.getElementById('tmTitle').value='';
     document.getElementById('tmDesc').value='';
     document.getElementById('tmTime').value='';
+    document.getElementById('tmSendToCal').checked=false;
     const base=new Date();if(_view==='day')base.setDate(base.getDate()+_dayOff);
     document.getElementById('tmDate').value=_fmt(base);
     document.getElementById('taskModalOverlay').classList.add('open');
@@ -1328,12 +1334,28 @@ label {
   };
   window.tasksCloseModal=function(){document.getElementById('taskModalOverlay').classList.remove('open');};
   window.tasksSaveNew=async function(){
-    const title=document.getElementById('tmTitle').value.trim(),desc=document.getElementById('tmDesc').value.trim(),date=document.getElementById('tmDate').value,time=document.getElementById('tmTime').value;
+    const title=document.getElementById('tmTitle').value.trim(),desc=document.getElementById('tmDesc').value.trim(),date=document.getElementById('tmDate').value,time=document.getElementById('tmTime').value,sendToCal=document.getElementById('tmSendToCal').checked;
     if(!title){alert('Please enter a title.');return;}
     if(!date){alert('Please pick a date.');return;}
+    if(sendToCal&&!time){alert('A time is required to send to Google Calendar. Please add a time or uncheck the calendar option.');return;}
     try{
       const r=await fetch('/api/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,description:desc,due_date:date,due_time:time||null})});
-      const task=await r.json();_cache.push(task);tasksCloseModal();_load();
+      const task=await r.json();
+      _cache.push(task);
+      if(sendToCal&&time){
+        const start=`${date}T${time}:00`,ed=new Date(`${date}T${time}:00`);
+        ed.setHours(ed.getHours()+1);
+        const end=ed.toISOString().slice(0,19);
+        try{
+          const cr=await fetch('/api/google/calendar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,start,end,description:desc||''})});
+          const cd=await cr.json();
+          if(cd.ok&&cd.id){
+            await fetch(`/api/tasks/${task.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({calendar_event_id:cd.id})});
+            task.calendar_event_id=cd.id;
+          }
+        }catch(calErr){console.error('GCal push failed:',calErr);}
+      }
+      tasksCloseModal();_load();
     }catch(e){alert('Error: '+e.message);}
   };
 
