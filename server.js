@@ -635,6 +635,394 @@ app.delete('/api/tasks/:id', async (req, res) => {
   } catch (e) { console.error('[Tasks DELETE]', e.message); res.status(500).json({ error: e.message }); }
 });
 
+// ── Novabooks: Bank Email Parser + Cron ──────────────────────────────────────
+
+// Sync log table
+await db.execute(`CREATE TABLE IF NOT EXISTS nb_sync_log (
+  id TEXT PRIMARY KEY,
+  synced_at TEXT DEFAULT (datetime('now')),
+  source TEXT NOT NULL,
+  imported INTEGER DEFAULT 0,
+  skipped INTEGER DEFAULT 0,
+  errors TEXT DEFAULT '',
+  summary TEXT DEFAULT ''
+)`);
+
+// ── Email parsers ────────────────────────────────────────────────────────────
+
+function parsePncAlert(subject, body, from) {
+  // PNC sends from pncalerts@pnc.com
+  // Subject patterns: "PNC Alert: Withdrawal", "PNC Alert: Deposit", "PNC Alert: Purchase"
+  // Body contains: amount, merchant/description, account ending, date
+  if (!from.toLowerCase().includes('pncalerts@pnc.com')) return null;
+  const result = { source: 'PNC', raw_subject: subject, raw_body: body };
+
+  // Extract amount — PNC format: "$1,234.56" or "$ 1,234.56"
+  const amountMatch = body.match(/\$\s?([\d,]+\.?\d*)/);
+  if (!amountMatch) return null;
+  result.amount = parseFloat(amountMatch[1].replace(/,/g, ''));
+
+  // Determine type from subject/body
+  const lc = (subject + ' ' + body).toLowerCase();
+  if (lc.includes('deposit') || lc.includes('credit') || lc.includes('transfer in')) {
+    result.type = 'income';
+    result.category = 'Other Income';
+  } else {
+    result.type = 'expense';
+    result.category = 'Miscellaneous';
+  }
+
+  // Extract merchant/description
+  const merchantMatch = body.match(/(?:at|from|to|merchant|description)[:\s]+([^\n\r$]{3,50})/i);
+  result.vendor = merchantMatch ? merchantMatch[1].trim() : 'PNC Transaction';
+
+  // Extract date — PNC format: "04/07/2026" or "April 7, 2026"
+  const dateMatch = body.match(/(\d{2}\/\d{2}\/\d{4})|(\w+ \d{1,2},? \d{4})/);
+  result.date = dateMatch ? new Date(dateMatch[0]).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+
+  // Extract account — "account ending in 1234"
+  const acctMatch = body.match(/ending\s+(?:in\s+)?(\d{4})/i);
+  result.account_last4 = acctMatch ? acctMatch[1] : null;
+
+  return result;
+}
+
+function parseAmexAlert(subject, body, from) {
+  // Amex sends from AmericanExpress@welcome.americanexpress.com or americanexpress.com domains
+  // Subject: "A charge has been made", "Your American Express Card Activity"
+  if (!from.toLowerCase().includes('americanexpress.com')) return null;
+  if (subject.toLowerCase().includes('verification') || subject.toLowerCase().includes('code') || subject.toLowerCase().includes('statement')) return null;
+
+  const result = { source: 'Amex', raw_subject: subject, raw_body: body };
+
+  // Extract amount — Amex format: "$1,234.56"
+  const amountMatch = body.match(/\$\s?([\d,]+\.?\d*)/);
+  if (!amountMatch) return null;
+  result.amount = parseFloat(amountMatch[1].replace(/,/g, ''));
+
+  // Amex charges are always expenses
+  const lc = (subject + ' ' + body).toLowerCase();
+  if (lc.includes('payment') || lc.includes('credit') || lc.includes('refund')) {
+    result.type = 'income';
+    result.category = 'Other Income';
+  } else {
+    result.type = 'expense';
+    result.category = 'Miscellaneous';
+  }
+
+  // Extract merchant
+  const merchantPatterns = [
+    /(?:at|from|merchant|where)[:\s]+([^\n\r$]{3,50})/i,
+    /Card Member:\s*[^\n]+\n+([^\n$]{3,50})/i,
+  ];
+  let vendor = 'Amex Transaction';
+  for (const p of merchantPatterns) {
+    const m = body.match(p);
+    if (m) { vendor = m[1].trim(); break; }
+  }
+  result.vendor = vendor;
+
+  // Extract date
+  const dateMatch = body.match(/(\d{2}\/\d{2}\/\d{4})|(\w+ \d{1,2},? \d{4})/);
+  result.date = dateMatch ? new Date(dateMatch[0]).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+
+  // Amex last 4 from subject/body
+  const acctMatch = body.match(/(?:ending|card)\s+(?:in\s+)?(\d{5}|\d{4})/i);
+  result.account_last4 = acctMatch ? acctMatch[1].slice(-4) : null;
+
+  return result;
+}
+
+function parseWellsFargoAlert(subject, body, from) {
+  // Wells Fargo sends from various @wellsfargo.com addresses
+  if (!from.toLowerCase().includes('wellsfargo.com')) return null;
+  if (subject.toLowerCase().includes('security') || subject.toLowerCase().includes('code')) return null;
+
+  const result = { source: 'WellsFargo', raw_subject: subject, raw_body: body };
+
+  const amountMatch = body.match(/\$\s?([\d,]+\.?\d*)/);
+  if (!amountMatch) return null;
+  result.amount = parseFloat(amountMatch[1].replace(/,/g, ''));
+
+  const lc = (subject + ' ' + body).toLowerCase();
+  result.type = (lc.includes('deposit') || lc.includes('credit') || lc.includes('transfer in')) ? 'income' : 'expense';
+  result.category = result.type === 'income' ? 'Other Income' : 'Miscellaneous';
+
+  const merchantMatch = body.match(/(?:at|from|to|merchant)[:\s]+([^\n\r$]{3,50})/i);
+  result.vendor = merchantMatch ? merchantMatch[1].trim() : 'Wells Fargo Transaction';
+
+  const dateMatch = body.match(/(\d{2}\/\d{2}\/\d{4})|(\w+ \d{1,2},? \d{4})/);
+  result.date = dateMatch ? new Date(dateMatch[0]).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+
+  const acctMatch = body.match(/ending\s+(?:in\s+)?(\d{4})/i);
+  result.account_last4 = acctMatch ? acctMatch[1] : null;
+
+  return result;
+}
+
+// ── Core sync function ───────────────────────────────────────────────────────
+
+async function runNovabooksSync(req) {
+  console.log('[NovaBooks Sync] Starting bank email sync...');
+  const auth = await getAuthedClient(req || { protocol: 'https', get: () => 'novacor-platform.onrender.com' });
+  if (!auth) { console.error('[NovaBooks Sync] No Google auth — skipping'); return { imported: 0, skipped: 0, error: 'No Google auth' }; }
+
+  const gmail = google.gmail({ version: 'v1', auth });
+
+  // Search last 8 days of emails from bank senders
+  const query = 'from:(pncalerts@pnc.com OR americanexpress.com OR wellsfargo.com) newer_than:8d';
+  const list = await gmail.users.messages.list({ userId: 'me', q: query, maxResults: 50 });
+  const messages = list.data.messages || [];
+  console.log(`[NovaBooks Sync] Found ${messages.length} bank emails to process`);
+
+  // Load accounts for matching
+  const accts = await db.execute('SELECT * FROM nb_accounts');
+  const accounts = accts.rows;
+
+  let imported = 0, skipped = 0, errors = [];
+
+  for (const msg of messages) {
+    try {
+      // Check if already processed
+      const existing = await db.execute({ sql: "SELECT value FROM kv WHERE key=?", args: [`nb_sync_gmail_${msg.id}`] });
+      if (existing.rows.length) { skipped++; continue; }
+
+      const full = await gmail.users.messages.get({ userId: 'me', id: msg.id, format: 'full' });
+      const headers = full.data.payload?.headers || [];
+      const subject = headers.find(h => h.name === 'Subject')?.value || '';
+      const from = headers.find(h => h.name === 'From')?.value || '';
+
+      // Extract body
+      function extractBody(payload) {
+        if (payload.body?.data) return Buffer.from(payload.body.data, 'base64url').toString('utf-8');
+        if (payload.parts) {
+          for (const part of payload.parts) {
+            if (part.mimeType === 'text/plain' && part.body?.data) return Buffer.from(part.body.data, 'base64url').toString('utf-8');
+          }
+          for (const part of payload.parts) {
+            if (part.body?.data) return Buffer.from(part.body.data, 'base64url').toString('utf-8');
+          }
+        }
+        return '';
+      }
+      const body = extractBody(full.data.payload);
+
+      // Try each parser
+      const parsed = parsePncAlert(subject, body, from) || parseAmexAlert(subject, body, from) || parseWellsFargoAlert(subject, body, from);
+      if (!parsed || !parsed.amount || parsed.amount <= 0) { skipped++; continue; }
+
+      // Match to account by last4 or source name
+      let account_id = null;
+      if (parsed.account_last4) {
+        const match = accounts.find(a => a.last4 === parsed.account_last4);
+        if (match) account_id = match.id;
+      }
+      if (!account_id) {
+        const sourceMap = { PNC: ['pnc','checking'], Amex: ['amex','amazon','credit'], WellsFargo: ['wells','fargo'] };
+        const keywords = sourceMap[parsed.source] || [];
+        const match = accounts.find(a => keywords.some(k => a.name.toLowerCase().includes(k) || a.institution.toLowerCase().includes(k)));
+        if (match) account_id = match.id;
+      }
+      if (!account_id && accounts.length > 0) account_id = accounts[0].id;
+      if (!account_id) { skipped++; continue; }
+
+      // Insert transaction
+      const txn_id = `txn_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      await db.execute({
+        sql: 'INSERT INTO nb_transactions (id,date,account_id,vendor,category,amount,type,description,tax_deductible) VALUES (?,?,?,?,?,?,?,?,?)',
+        args: [txn_id, parsed.date, account_id, parsed.vendor, parsed.category, parsed.amount, parsed.type, `[${parsed.source} Auto-Import]`, 1]
+      });
+
+      // Mark as processed
+      await db.execute({ sql: 'INSERT INTO kv (key,value) VALUES (?,?) ON CONFLICT(key) DO NOTHING', args: [`nb_sync_gmail_${msg.id}`, '1'] });
+      imported++;
+    } catch (e) {
+      console.error('[NovaBooks Sync] Error processing email:', e.message);
+      errors.push(e.message);
+      skipped++;
+    }
+  }
+
+  // Log the sync
+  const syncId = `sync_${Date.now()}`;
+  const summary = `Imported ${imported} transactions, skipped ${skipped}`;
+  await db.execute({
+    sql: 'INSERT INTO nb_sync_log (id,source,imported,skipped,errors,summary) VALUES (?,?,?,?,?,?)',
+    args: [syncId, 'gmail_auto', imported, skipped, errors.join('; '), summary]
+  });
+
+  console.log(`[NovaBooks Sync] Complete — ${summary}`);
+  return { imported, skipped, errors, summary };
+}
+
+// ── Weekly summary email ─────────────────────────────────────────────────────
+
+async function sendNovaBooksSummaryEmail(req) {
+  try {
+    const auth = await getAuthedClient(req || { protocol: 'https', get: () => 'novacor-platform.onrender.com' });
+    if (!auth) return;
+    const year = new Date().getFullYear().toString();
+    const weekOf = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+    // Get summary data
+    const sumR = await db.execute({ sql: "SELECT type, category, amount FROM nb_transactions WHERE strftime('%Y',date)=?", args: [year] });
+    let totalIncome = 0, totalExpenses = 0;
+    for (const t of sumR.rows) { if (t.type === 'income') totalIncome += t.amount; else totalExpenses += t.amount; }
+    const netProfit = totalIncome - totalExpenses;
+    const estTax = netProfit > 0 ? netProfit * 0.9235 * 0.153 + netProfit * 0.22 : 0;
+
+    const milR = await db.execute({ sql: "SELECT SUM(miles) as m, SUM(miles*rate) as d FROM nb_mileage WHERE strftime('%Y',date)=?", args: [year] });
+    const taxPaidR = await db.execute({ sql: 'SELECT SUM(amount) as p FROM nb_tax_payments WHERE year=?', args: [year] });
+
+    // Get this week's imports
+    const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
+    const recentR = await db.execute({ sql: "SELECT * FROM nb_transactions WHERE description LIKE '%Auto-Import%' AND created_at >= ? ORDER BY date DESC", args: [weekAgo.toISOString()] });
+
+    const fmt = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    const recentRows = recentR.rows.map(t => `
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #e8e8e8;font-size:13px;">${t.date}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e8e8e8;font-size:13px;">${t.vendor || '—'}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e8e8e8;font-size:13px;">${t.category}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e8e8e8;font-size:13px;text-align:right;color:${t.type === 'income' ? '#27ae60' : '#e74c3c'};font-weight:600;">${t.type === 'income' ? '+' : '−'}${fmt(t.amount)}</td>
+      </tr>`).join('');
+
+    const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f4f4f4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <div style="max-width:600px;margin:32px auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
+    <div style="background:#060d1a;padding:28px 32px;text-align:center;">
+      <div style="font-size:11px;letter-spacing:0.15em;text-transform:uppercase;color:#d4af37;margin-bottom:6px;">Novacor LLC</div>
+      <div style="font-size:22px;font-weight:700;color:#ffffff;">NovaBooks Weekly Report</div>
+      <div style="font-size:13px;color:#8899aa;margin-top:6px;">Week of ${weekOf}</div>
+    </div>
+    <div style="padding:24px 32px;background:#f8f9fa;border-bottom:1px solid #e8e8e8;">
+      <div style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#8899aa;margin-bottom:16px;">Year-to-Date Snapshot — ${year}</div>
+      <div style="display:flex;gap:0;flex-wrap:wrap;">
+        <div style="flex:1;min-width:120px;padding:12px 16px;background:#fff;border-radius:6px;margin:4px;border:1px solid #e8e8e8;">
+          <div style="font-size:11px;color:#8899aa;margin-bottom:4px;">Total Income</div>
+          <div style="font-size:18px;font-weight:700;color:#27ae60;">${fmt(totalIncome)}</div>
+        </div>
+        <div style="flex:1;min-width:120px;padding:12px 16px;background:#fff;border-radius:6px;margin:4px;border:1px solid #e8e8e8;">
+          <div style="font-size:11px;color:#8899aa;margin-bottom:4px;">Total Expenses</div>
+          <div style="font-size:18px;font-weight:700;color:#e74c3c;">${fmt(totalExpenses)}</div>
+        </div>
+        <div style="flex:1;min-width:120px;padding:12px 16px;background:#fff;border-radius:6px;margin:4px;border:1px solid #e8e8e8;">
+          <div style="font-size:11px;color:#8899aa;margin-bottom:4px;">Net Profit</div>
+          <div style="font-size:18px;font-weight:700;color:${netProfit >= 0 ? '#27ae60' : '#e74c3c'};">${fmt(netProfit)}</div>
+        </div>
+        <div style="flex:1;min-width:120px;padding:12px 16px;background:#fff;border-radius:6px;margin:4px;border:1px solid #e8e8e8;">
+          <div style="font-size:11px;color:#8899aa;margin-bottom:4px;">Est. Tax Owed</div>
+          <div style="font-size:18px;font-weight:700;color:#d4af37;">${fmt(estTax)}</div>
+        </div>
+      </div>
+    </div>
+    <div style="padding:16px 32px;background:#f8f9fa;border-bottom:1px solid #e8e8e8;display:flex;gap:24px;flex-wrap:wrap;">
+      <div><span style="font-size:12px;color:#8899aa;">Mileage Deduction: </span><span style="font-size:13px;font-weight:600;color:#3498db;">${fmt(milR.rows[0]?.d || 0)}</span> <span style="font-size:11px;color:#aaa;">(${(milR.rows[0]?.m || 0).toFixed(1)} mi)</span></div>
+      <div><span style="font-size:12px;color:#8899aa;">Tax Paid YTD: </span><span style="font-size:13px;font-weight:600;color:#27ae60;">${fmt(taxPaidR.rows[0]?.p || 0)}</span></div>
+    </div>
+    <div style="padding:24px 32px;">
+      <div style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#8899aa;margin-bottom:16px;">Auto-Imported This Week (${recentR.rows.length} transactions)</div>
+      ${recentR.rows.length > 0 ? `
+      <table style="width:100%;border-collapse:collapse;border:1px solid #e8e8e8;border-radius:6px;overflow:hidden;">
+        <thead>
+          <tr style="background:#f8f9fa;">
+            <th style="padding:10px 12px;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#8899aa;text-align:left;border-bottom:1px solid #e8e8e8;">Date</th>
+            <th style="padding:10px 12px;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#8899aa;text-align:left;border-bottom:1px solid #e8e8e8;">Vendor</th>
+            <th style="padding:10px 12px;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#8899aa;text-align:left;border-bottom:1px solid #e8e8e8;">Category</th>
+            <th style="padding:10px 12px;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#8899aa;text-align:right;border-bottom:1px solid #e8e8e8;">Amount</th>
+          </tr>
+        </thead>
+        <tbody>${recentRows}</tbody>
+      </table>` : '<div style="color:#8899aa;font-size:13px;padding:8px 0;">No new transactions auto-imported this week.</div>'}
+    </div>
+    <div style="padding:20px 32px;background:#060d1a;text-align:center;">
+      <div style="font-size:12px;color:#4a6080;">NovaBooks — Novacor LLC Internal Accounting</div>
+      <div style="font-size:11px;color:#3a4a5a;margin-top:4px;">Auto-generated every Monday 8:00 AM MST</div>
+    </div>
+  </div>
+</body>
+</html>`;
+
+    const rawEmail = [
+      `To: novacor.icaz@gmail.com`,
+      `From: Novacor Platform <novacor.icaz@gmail.com>`,
+      `Subject: 📊 NovaBooks Weekly — Novacor LLC | Week of ${weekOf}`,
+      `MIME-Version: 1.0`,
+      `Content-Type: text/html; charset=utf-8`,
+      ``,
+      html
+    ].join('\r\n');
+
+    const gmail2 = google.gmail({ version: 'v1', auth });
+    await gmail2.users.messages.send({ userId: 'me', requestBody: { raw: Buffer.from(rawEmail).toString('base64url') } });
+    console.log('[NovaBooks] Weekly summary email sent successfully');
+  } catch (e) {
+    console.error('[NovaBooks] Failed to send weekly summary email:', e.message);
+  }
+}
+
+// ── Cron: Every Monday 8am America/Phoenix (MST = UTC-7) ────────────────────
+function scheduleNovabooksSync() {
+  function msUntilNextMonday8am() {
+    const now = new Date();
+    const mst = new Date(now.toLocaleString('en-US', { timeZone: 'America/Phoenix' }));
+    const day = mst.getDay();
+    const daysUntilMonday = day === 1 ? (mst.getHours() < 8 ? 0 : 7) : (8 - day) % 7;
+    const nextMonday = new Date(mst);
+    nextMonday.setDate(mst.getDate() + daysUntilMonday);
+    nextMonday.setHours(8, 0, 0, 0);
+    const utcNextMonday = new Date(nextMonday.toLocaleString('en-US', { timeZone: 'UTC' }));
+    return utcNextMonday - now;
+  }
+
+  function scheduleNext() {
+    const ms = msUntilNextMonday8am();
+    console.log(`[NovaBooks Sync] Next sync scheduled in ${Math.round(ms/1000/60/60)} hours`);
+    setTimeout(async () => {
+      await runNovabooksSync(null);
+      await sendNovaBooksSummaryEmail(null);
+      scheduleNext();
+    }, ms);
+  }
+
+  scheduleNext();
+}
+
+scheduleNovabooksSync();
+
+// ── Manual sync endpoint ─────────────────────────────────────────────────────
+app.post('/api/nb/sync', async (req, res) => {
+  try {
+    const result = await runNovabooksSync(req);
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    console.error('[NovaBooks Sync]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/nb/sync-log', async (req, res) => {
+  try {
+    const r = await db.execute('SELECT * FROM nb_sync_log ORDER BY synced_at DESC LIMIT 20');
+    res.json(r.rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/nb/send-weekly-report', async (req, res) => {
+  try {
+    await sendNovaBooksSummaryEmail(req);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Novabooks API ─────────────────────────────────────────────────────────────
 
 // Create all Novabooks tables
