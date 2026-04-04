@@ -764,6 +764,44 @@ function parseWellsFargoAlert(subject, body, from) {
 
 async function runNovabooksSync(req) {
   console.log('[NovaBooks Sync] Starting bank email sync...');
+
+  // ── Auto-backup all critical data before sync ────────────────────────────
+  try {
+    const backupTimestamp = new Date().toISOString().slice(0, 10);
+    const criticalKeys = ['nc_active_deals', 'nc_crm_contacts', 'nc_contractors', 'nc_info_docs'];
+    for (const key of criticalKeys) {
+      try {
+        const r = await db.execute({ sql: 'SELECT value FROM kv WHERE key=?', args: [key] });
+        if (r.rows.length && r.rows[0].value) {
+          const backupKey = `backup_${key}_${backupTimestamp}`;
+          await db.execute({
+            sql: 'INSERT INTO kv (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',
+            args: [backupKey, r.rows[0].value]
+          });
+          console.log(`[Backup] Saved ${key} → ${backupKey} (${r.rows[0].value.length} chars)`);
+        }
+      } catch (e) {
+        console.error(`[Backup] Failed to backup ${key}:`, e.message);
+      }
+    }
+    // Clean up backups older than 4 weeks (keep only last 4)
+    for (const key of criticalKeys) {
+      const allBackups = await db.execute({
+        sql: "SELECT key FROM kv WHERE key LIKE ? ORDER BY key DESC",
+        args: [`backup_${key}_%`]
+      });
+      const toDelete = allBackups.rows.slice(4); // keep newest 4
+      for (const row of toDelete) {
+        await db.execute({ sql: 'DELETE FROM kv WHERE key=?', args: [row.key] });
+        console.log(`[Backup] Cleaned old backup: ${row.key}`);
+      }
+    }
+    console.log('[Backup] Weekly backup complete');
+  } catch (e) {
+    console.error('[Backup] Backup process failed:', e.message);
+  }
+  // ────────────────────────────────────────────────────────────────────────
+
   const auth = await getAuthedClient(req || { protocol: 'https', get: () => 'novacor-platform.onrender.com' });
   if (!auth) { console.error('[NovaBooks Sync] No Google auth — skipping'); return { imported: 0, skipped: 0, error: 'No Google auth' }; }
 
@@ -1003,6 +1041,36 @@ app.post('/api/nb/sync', async (req, res) => {
     console.error('[NovaBooks Sync]', e.message);
     res.status(500).json({ error: e.message });
   }
+});
+
+// GET /api/nb/backups — list available backups
+app.get('/api/nb/backups', async (req, res) => {
+  try {
+    const r = await db.execute("SELECT key, length(value) as size FROM kv WHERE key LIKE 'backup_%' ORDER BY key DESC");
+    res.json(r.rows.map(row => ({
+      key: row.key,
+      size: row.size,
+      label: row.key.replace('backup_', '').replace(/_\d{4}-\d{2}-\d{2}$/, '') + ' — ' + row.key.slice(-10)
+    })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/nb/restore — restore a backup by key
+app.post('/api/nb/restore', async (req, res) => {
+  try {
+    const { backup_key } = req.body;
+    if (!backup_key || !backup_key.startsWith('backup_')) return res.status(400).json({ error: 'Invalid backup key' });
+    const backup = await db.execute({ sql: 'SELECT value FROM kv WHERE key=?', args: [backup_key] });
+    if (!backup.rows.length) return res.status(404).json({ error: 'Backup not found' });
+    // Derive original key from backup key — e.g. backup_nc_active_deals_2026-04-07 → nc_active_deals
+    const originalKey = backup_key.replace(/^backup_/, '').replace(/_\d{4}-\d{2}-\d{2}$/, '');
+    await db.execute({
+      sql: 'INSERT INTO kv (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',
+      args: [originalKey, backup.rows[0].value]
+    });
+    console.log(`[Restore] Restored ${originalKey} from ${backup_key}`);
+    res.json({ ok: true, restored: originalKey, from: backup_key });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/nb/sync-log', async (req, res) => {
