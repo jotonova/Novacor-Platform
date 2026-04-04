@@ -2192,6 +2192,22 @@ label {
     </div>
     <!-- Sync Log -->
     <div id="nb-sync-log" style="margin-bottom:20px;"></div>
+
+    <!-- Backup & Restore -->
+    <div id="nb-backup-section" style="background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+        <div>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.78rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);">🛡️ Data Backups</div>
+          <div style="font-size:0.72rem;color:var(--text-muted);margin-top:3px;">Auto-backup runs every Monday. Keep last 4 weeks.</div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button onclick="nbRunManualBackup()" style="padding:7px 16px;background:transparent;border:1px solid var(--gold);border-radius:4px;color:var(--gold);font-size:0.75rem;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;font-weight:600;">💾 Backup Now</button>
+          <button onclick="nbLoadBackups()" style="padding:7px 16px;background:transparent;border:1px solid var(--border);border-radius:4px;color:var(--text-muted);font-size:0.75rem;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;font-weight:600;">↻ Refresh</button>
+        </div>
+      </div>
+      <div id="nb-backup-list" style="font-size:0.78rem;color:var(--text-muted);">Loading backups...</div>
+    </div>
+
     <div id="nb-accounts-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;"></div>
   </div>
 
@@ -5899,7 +5915,7 @@ window.bulkImportNotionExpenses = async function() {
     else if(tabId==='nb-mileage') nbLoadMileage();
     else if(tabId==='nb-vendors') nbLoadVendors();
     else if(tabId==='nb-tax') nbLoadTax();
-    else if(tabId==='nb-accounts') nbLoadAccounts();
+    else if(tabId==='nb-accounts') { nbLoadAccounts(); nbLoadSyncLog(); nbLoadBackups(); }
   };
 
   // ── Modal helpers ────────────────────────────────────────────
@@ -6919,6 +6935,81 @@ window.bulkImportNotionExpenses = async function() {
     alert(`Import complete!\n✅ ${imported} imported\n⏭ ${skipped} skipped (duplicates)`);
     nbLoadDeals();
     nbLoadDashboard();
+  };
+
+  // ── Backup & Restore ──────────────────────────────────────────────────────
+  window.nbLoadBackups = async function() {
+    try {
+      const backups = await fetch('/api/nb/backups').then(r=>r.json());
+      const el = document.getElementById('nb-backup-list');
+      if(!el) return;
+      if(!backups.length) {
+        el.innerHTML = '<div style="opacity:0.5;">No backups yet — click Backup Now or wait for Monday auto-backup.</div>';
+        return;
+      }
+      // Group by date
+      const grouped = {};
+      backups.forEach(b => {
+        const date = b.key.slice(-10);
+        if(!grouped[date]) grouped[date] = [];
+        grouped[date].push(b);
+      });
+      el.innerHTML = Object.entries(grouped).sort((a,b)=>b[0].localeCompare(a[0])).map(([date, items])=>`
+        <div style="margin-bottom:14px;">
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.7rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;">
+            📅 ${new Date(date+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})}
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;">
+            ${items.map(b=>{
+              const name = b.key.replace('backup_','').replace('_'+date,'').replace(/_/g,' ');
+              const sizeKB = (b.size/1024).toFixed(0);
+              return `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;">
+                <div>
+                  <div style="font-size:0.78rem;color:var(--text);font-weight:600;">${name}</div>
+                  <div style="font-size:0.68rem;color:var(--text-muted);">${sizeKB} KB</div>
+                </div>
+                <button onclick="nbRestoreBackup('${b.key}','${name}')" style="padding:4px 10px;background:transparent;border:1px solid rgba(231,76,60,0.4);border-radius:4px;color:#e74c3c;font-size:0.68rem;cursor:pointer;white-space:nowrap;">⚠️ Restore</button>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>`).join('');
+    } catch(e) {
+      const el = document.getElementById('nb-backup-list');
+      if(el) el.innerHTML = '<div style="color:#e74c3c;">Error loading backups: '+e.message+'</div>';
+    }
+  };
+
+  window.nbRunManualBackup = async function() {
+    const btn = document.querySelector('[onclick="nbRunManualBackup()"]');
+    if(btn) { btn.textContent='⏳ Backing up...'; btn.disabled=true; }
+    try {
+      await fetch('/api/nb/sync', {method:'POST'});
+      alert('✅ Backup complete! All data saved.');
+      nbLoadBackups();
+    } catch(e) {
+      alert('Backup error: '+e.message);
+    }
+    if(btn) { btn.textContent='💾 Backup Now'; btn.disabled=false; }
+  };
+
+  window.nbRestoreBackup = async function(backupKey, name) {
+    if(!confirm(`⚠️ RESTORE WARNING\n\nThis will overwrite your current "${name}" data with the backup from ${backupKey.slice(-10)}.\n\nThis cannot be undone. Are you absolutely sure?`)) return;
+    if(!confirm(`Second confirmation — restore "${name}" from backup?\n\nClick OK to proceed.`)) return;
+    try {
+      const r = await fetch('/api/nb/restore', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ backup_key: backupKey })
+      });
+      const data = await r.json();
+      if(data.ok) {
+        alert(`✅ Restored successfully!\n\n${data.restored} has been restored from ${data.from}\n\nRefresh the page to see your restored data.`);
+      } else {
+        alert('Restore failed: ' + (data.error||'Unknown error'));
+      }
+    } catch(e) {
+      alert('Restore error: '+e.message);
+    }
   };
 
   // ── Init ─────────────────────────────────────────────────────
