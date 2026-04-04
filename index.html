@@ -2104,6 +2104,9 @@ label {
       <select id="nb-txn-filter-type" onchange="nbLoadTransactions()" style="padding:8px 12px;background:var(--card-bg);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:0.82rem;">
         <option value="">All Types</option><option value="income">Income</option><option value="expense">Expense</option>
       </select>
+      <select id="nb-txn-filter-deal" onchange="nbLoadTransactions()" style="padding:8px 12px;background:var(--card-bg);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:0.82rem;">
+        <option value="">All Deals</option>
+      </select>
       <select id="nb-txn-filter-account" onchange="nbLoadTransactions()" style="padding:8px 12px;background:var(--card-bg);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:0.82rem;">
         <option value="">All Accounts</option>
       </select>
@@ -5808,7 +5811,7 @@ window.bulkImportNotionExpenses = function() {
     $(tabId).style.display='block';
     btn.classList.add('active');
     if(tabId==='nb-dashboard') nbLoadDashboard();
-    else if(tabId==='nb-transactions') { nbPopulateAccountFilter(); nbLoadTransactions(); }
+    else if(tabId==='nb-transactions') { nbPopulateAccountFilter(); nbPopulateTxnDealFilter(); nbLoadTransactions(); }
     else if(tabId==='nb-deals') nbLoadDeals();
     else if(tabId==='nb-mileage') nbLoadMileage();
     else if(tabId==='nb-vendors') nbLoadVendors();
@@ -5908,6 +5911,14 @@ window.bulkImportNotionExpenses = function() {
     const sel=$('nb-txn-filter-account');
     sel.innerHTML='<option value="">All Accounts</option>'+_nbAccounts.map(a=>`<option value="${a.id}">${a.name}</option>`).join('');
   }
+  function nbPopulateTxnDealFilter() {
+    fetch('/api/nb/deals').then(r=>r.json()).then(deals=>{
+      const sel=document.getElementById('nb-txn-filter-deal');
+      if(!sel) return;
+      sel.innerHTML='<option value="">All Deals</option>'+
+        deals.map(d=>`<option value="${d.id}">${d.address}</option>`).join('');
+    });
+  }
 
   function nbPopulateTxnModal() {
     const type=$('nb-txn-type').value;
@@ -5973,6 +5984,7 @@ window.bulkImportNotionExpenses = function() {
     const s=$('nb-txn-search').value; if(s) params.set('search',s);
     const t=$('nb-txn-filter-type').value; if(t) params.set('type',t);
     const a=$('nb-txn-filter-account').value; if(a) params.set('account_id',a);
+    const dl=$('nb-txn-filter-deal')?.value; if(dl) params.set('deal_id',dl);
     const sd=$('nb-txn-filter-start').value; if(sd) params.set('start_date',sd);
     const ed=$('nb-txn-filter-end').value; if(ed) params.set('end_date',ed);
     const txns=await fetch('/api/nb/transactions?'+params).then(r=>r.json());
@@ -6582,21 +6594,154 @@ window.bulkImportNotionExpenses = function() {
   };
 
   // ── Dashboard Deal Import ─────────────────────────────────────
-  function nbPopulateDashboardDeals() {
-    const sel = document.getElementById('nb-dashboard-deal-select');
-    if(!sel) return;
-    const deals = JSON.parse(localStorage.getItem('active_deals') || '[]');
-    sel.innerHTML = '<option value="">— select a deal —</option>' +
-      deals.map((d,i) => `<option value="${i}">${d.address || 'Deal ' + (i+1)}</option>`).join('');
-  }
+  window.nbPopulateDashboardDeals = async function() {
+    try {
+      const r = await fetch('/api/store/nc_active_deals').then(r=>r.json());
+      const deals = JSON.parse(r.value||'[]');
+      window._dashboardDeals = deals;
+      const sel = document.getElementById('nb-dashboard-deal-select');
+      if(!sel) return;
+      sel.innerHTML = '<option value="">— select a deal —</option>' +
+        deals.map((d,i)=>`<option value="${i}">${d.address}</option>`).join('');
+    } catch(e) { console.error('Could not load dashboard deals:', e); }
+  };
 
   window.nbImportSelectedDeal = async function() {
     const sel = document.getElementById('nb-dashboard-deal-select');
-    if(!sel || sel.value === '') { alert('Please select a deal to import.'); return; }
-    const deals = JSON.parse(localStorage.getItem('active_deals') || '[]');
-    const deal = deals[parseInt(sel.value)];
+    const idx = sel?.value;
+    if(idx===''||idx==null) { alert('Please select a deal from the dropdown first.'); return; }
+    const deal = window._dashboardDeals?.[parseInt(idx)];
     if(!deal) { alert('Deal not found.'); return; }
-    await window.nbImportFromDeal(deal);
+    await nbShowImportPreview(deal);
+  };
+
+  window.nbShowImportPreview = async function(deal) {
+    const dealExpenses = deal.expenses || [];
+    if(!dealExpenses.length) {
+      alert('No expenses found in the Detail View for "'+deal.address+'".\n\nAdd expenses via + ADD EXPENSE in the Dashboard deal panel first.');
+      return;
+    }
+
+    // Get accounts
+    const accts = await fetch('/api/nb/accounts').then(r=>r.json());
+    const ccAcct = accts.find(a=>a.type==='credit_card') || accts[0];
+    if(!ccAcct) { alert('Please add an account in NovaBooks \u2192 Accounts first.'); return; }
+
+    // Ensure deal exists in NovaBooks
+    const nbDeals = await fetch('/api/nb/deals').then(r=>r.json());
+    let nbDeal = nbDeals.find(d=>d.address===deal.address);
+    if(!nbDeal) {
+      nbDeal = await fetch('/api/nb/deals',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        address:deal.address, status:'active',
+        purchase_date:deal.coe||null, purchase_price:parseFloat(deal.price)||0,
+        notes:'Imported from Dashboard'
+      })}).then(r=>r.json());
+    }
+
+    // Get existing transactions for duplicate check
+    const existing = await fetch(`/api/nb/transactions?deal_id=${nbDeal.id}`).then(r=>r.json());
+
+    // Category mapping
+    const catMap = {
+      'Kitchen':'Rehab \u2014 Materials','Bathroom':'Rehab \u2014 Materials',
+      'Flooring':'Rehab \u2014 Materials','Paint':'Rehab \u2014 Materials',
+      'Lighting/Fixtures':'Rehab \u2014 Materials','Lighting':'Rehab \u2014 Materials',
+      'Interior':'Rehab \u2014 Labor','Exterior':'Rehab \u2014 Labor',
+      'Roofing':'Rehab \u2014 Labor','HVAC':'Rehab \u2014 Labor','HVAC/Mini Split':'Rehab \u2014 Labor',
+      'Holding Costs':'Carrying \u2014 Mortgage/Interest',
+      'Misc':'Miscellaneous','Garage':'Rehab \u2014 Labor'
+    };
+
+    // Build preview with duplicate flags
+    const previewItems = dealExpenses.map((exp,i) => {
+      const amount = parseFloat(exp.amount)||0;
+      const date = exp.date||deal.coe||new Date().toISOString().slice(0,10);
+      const isDupe = existing.some(t =>
+        Math.abs(t.amount - amount) < 1.00 &&
+        Math.abs(new Date(t.date) - new Date(date)) < 3*24*60*60*1000
+      );
+      const cat = catMap[exp.lineitem]||catMap[exp.category]||catMap[exp.vendor]||'Miscellaneous';
+      const needsReview = !catMap[exp.lineitem] && !catMap[exp.category] && !catMap[exp.vendor];
+      return { i, exp, amount, date, cat, isDupe, needsReview };
+    });
+
+    // Build preview modal HTML
+    const rows = previewItems.map(p=>`
+      <tr style="background:${p.isDupe?'rgba(231,76,60,0.08)':p.needsReview?'rgba(212,175,55,0.08)':'transparent'}">
+        <td style="padding:8px 10px;"><input type="checkbox" id="imp-chk-${p.i}" ${p.isDupe?'':'checked'} style="accent-color:var(--gold);"></td>
+        <td style="padding:8px 10px;font-size:0.78rem;color:var(--text);">${p.exp.lineitem||p.exp.category||p.exp.vendor||'Expense'}</td>
+        <td style="padding:8px 10px;font-size:0.78rem;color:var(--text);">${p.date}</td>
+        <td style="padding:8px 10px;font-size:0.78rem;font-weight:600;color:var(--text);">${p.amount.toFixed(2)}</td>
+        <td style="padding:8px 10px;font-size:0.72rem;color:${p.needsReview?'var(--gold)':'var(--text-muted)'};">${p.cat}${p.needsReview?' \u26a0\ufe0f Review':''}</td>
+        <td style="padding:8px 10px;font-size:0.7rem;color:#e74c3c;">${p.isDupe?'\u26a0\ufe0f Possible duplicate':''}</td>
+      </tr>`).join('');
+
+    // Create and show modal
+    let previewModal = document.getElementById('nb-import-preview-modal');
+    if(!previewModal) {
+      previewModal = document.createElement('div');
+      previewModal.id = 'nb-import-preview-modal';
+      previewModal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:2000;display:flex;align-items:center;justify-content:center;';
+      document.body.appendChild(previewModal);
+    }
+    const itemsJson = JSON.stringify(previewItems).replace(/\\/g,'\\\\').replace(/`/g,'\\`');
+    previewModal.innerHTML = `
+      <div style="background:#0a1628;border:1px solid var(--border);border-radius:12px;padding:28px;width:90%;max-width:780px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.7);">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:1.1rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--gold);margin-bottom:6px;">Import Preview \u2014 ${deal.address}</div>
+        <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:20px;">Review expenses below. Uncheck any duplicates before importing.</div>
+        <table style="width:100%;border-collapse:collapse;">
+          <thead><tr style="border-bottom:1px solid var(--border);">
+            <th style="padding:8px 10px;font-size:0.68rem;color:var(--text-muted);text-align:left;">\u2713</th>
+            <th style="padding:8px 10px;font-size:0.68rem;color:var(--text-muted);text-align:left;">Category</th>
+            <th style="padding:8px 10px;font-size:0.68rem;color:var(--text-muted);text-align:left;">Date</th>
+            <th style="padding:8px 10px;font-size:0.68rem;color:var(--text-muted);text-align:left;">Amount</th>
+            <th style="padding:8px 10px;font-size:0.68rem;color:var(--text-muted);text-align:left;">NovaBooks Category</th>
+            <th style="padding:8px 10px;font-size:0.68rem;color:var(--text-muted);text-align:left;">Flag</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
+          <button onclick="document.getElementById('nb-import-preview-modal').remove()" style="padding:9px 20px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);cursor:pointer;font-size:0.8rem;">Cancel</button>
+          <button id="nb-import-confirm-btn" style="padding:9px 24px;background:var(--gold);border:none;border-radius:6px;color:var(--navy);font-weight:700;font-size:0.8rem;cursor:pointer;">Import Selected</button>
+        </div>
+      </div>`;
+    previewModal.style.display='flex';
+    // Attach confirm handler with closure over previewItems/nbDeal/ccAcct
+    document.getElementById('nb-import-confirm-btn').onclick = () =>
+      nbConfirmImport(previewItems, nbDeal.id, ccAcct.id);
+  };
+
+  window.nbConfirmImport = async function(items, dealId, accountId) {
+    const catMap = {
+      'Kitchen':'Rehab \u2014 Materials','Bathroom':'Rehab \u2014 Materials',
+      'Flooring':'Rehab \u2014 Materials','Paint':'Rehab \u2014 Materials',
+      'Lighting/Fixtures':'Rehab \u2014 Materials','Lighting':'Rehab \u2014 Materials',
+      'Interior':'Rehab \u2014 Labor','Exterior':'Rehab \u2014 Labor',
+      'Roofing':'Rehab \u2014 Labor','HVAC':'Rehab \u2014 Labor','HVAC/Mini Split':'Rehab \u2014 Labor',
+      'Holding Costs':'Carrying \u2014 Mortgage/Interest',
+      'Misc':'Miscellaneous','Garage':'Rehab \u2014 Labor'
+    };
+    let imported=0, skipped=0;
+    for(const p of items) {
+      const chk = document.getElementById('imp-chk-'+p.i);
+      if(!chk?.checked) { skipped++; continue; }
+      await fetch('/api/nb/transactions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        date: p.date,
+        account_id: accountId,
+        deal_id: dealId,
+        vendor: p.exp.lineitem||p.exp.category||p.exp.vendor||'Expense',
+        category: p.cat||'Miscellaneous',
+        amount: p.amount,
+        type: 'expense',
+        description: `[Dashboard Import] ${p.exp.lineitem||p.exp.category||p.exp.vendor||''}`,
+        tax_deductible: 1
+      })});
+      imported++;
+    }
+    document.getElementById('nb-import-preview-modal')?.remove();
+    alert(`Done! ${imported} expense${imported!==1?'s':''} imported.${skipped?' '+skipped+' skipped.':''}`);
+    nbLoadDeals();
+    nbLoadTransactions();
   };
 
   window.nbImportFromDeal = async function(deal) {
