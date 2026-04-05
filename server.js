@@ -1393,6 +1393,13 @@ app.patch('/api/nb/deals/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.delete('/api/nb/deals/:id', async (req, res) => {
+  try {
+    await db.execute({ sql: 'DELETE FROM nb_deals WHERE id=?', args: [req.params.id] });
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Novabooks: Summary (dashboard stats) ────────────────────────────────────
 app.get('/api/nb/summary', async (req, res) => {
   try {
