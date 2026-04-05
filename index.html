@@ -3154,7 +3154,8 @@ async function loadDealCardPhotos(deals) {
     }
     try {
       const r = await fetch('/api/store/nc_' + d.photoKey).then(r=>r.json());
-      const src = typeof r.value === 'string' ? JSON.parse(r.value) : r.value;
+      let src = r.value;
+      if(typeof src === 'string' && src.startsWith('"')) { try { src = JSON.parse(src); } catch(e) {} }
       if(src) {
         img.src = src; img.style.display = '';
         const ph = document.getElementById('dp-placeholder-' + d.id); if(ph) ph.remove();
@@ -3555,7 +3556,8 @@ function openDealDetail(id) {
   } else if(d.photoKey) {
     hero.innerHTML = '<span style="color:var(--text-muted);font-size:0.8rem;">Loading photo...</span>';
     fetch('/api/store/nc_' + d.photoKey).then(r=>r.json()).then(r=>{
-      const src = typeof r.value === 'string' ? JSON.parse(r.value) : r.value;
+      let src = r.value;
+      if(typeof src === 'string' && src.startsWith('"')) { try { src = JSON.parse(src); } catch(e) {} }
       if(src) hero.innerHTML = `<img src="${src}" alt="${d.address}" style="width:100%;height:100%;object-fit:cover;">`;
       else hero.innerHTML = '<span>No photo uploaded</span>';
     }).catch(()=>{ hero.innerHTML = '<span>No photo uploaded</span>'; });
@@ -4574,7 +4576,8 @@ function openClosedDetail(id) {
   // Async load photo if stored separately
   if(!d.photo && d.photoKey) {
     fetch('/api/store/nc_' + d.photoKey).then(r=>r.json()).then(r=>{
-      const src = typeof r.value === 'string' ? JSON.parse(r.value) : r.value;
+      let src = r.value;
+      if(typeof src === 'string' && src.startsWith('"')) { try { src = JSON.parse(src); } catch(e) {} }
       const hero = document.getElementById('closed-detail-hero');
       if(src && hero) hero.innerHTML = `<img src="${src}" style="width:100%;height:100%;object-fit:cover;">`;
       else if(hero) hero.innerHTML = '<span>No photo</span>';
