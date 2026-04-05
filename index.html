@@ -3710,12 +3710,27 @@ function renderDealExpenses(d) {
         '<div>' +
           '<div style="color:var(--white);">' + (e.desc||'Expense') + '</div>' +
           (e.receipt ? '<div style="font-size:0.72rem;color:var(--text-muted);margin-top:2px;">📎 '+e.receipt+'</div>' : '') +
-        (e.files && e.files.length ? '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;">' + e.files.map(function(f,fi){
-          if(f.type && f.type.startsWith('image/')) {
-            return '<img src="'+f.data+'" style="height:36px;width:36px;object-fit:cover;border-radius:3px;cursor:pointer;border:1px solid var(--border);" onclick="expViewFile('+i+','+fi+')" title="'+f.name+'">';
+        (function(){
+          // New format: show receiptRefs as clickable spans
+          if(e.receiptRefs && e.receiptRefs.length) {
+            return '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;">' +
+              e.receiptRefs.map(function(ref,fi){
+                var icon = (ref.type && ref.type.startsWith('image/')) ? '🖼️' : '📄';
+                return '<span onclick="expViewFile('+i+','+fi+')" style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;background:rgba(201,168,76,0.1);border:1px solid rgba(201,168,76,0.25);border-radius:3px;font-size:0.68rem;color:var(--gold);cursor:pointer;">'+icon+' '+ref.name+'</span>';
+              }).join('') + '</div>';
           }
-          return '<span onclick="expViewFile('+i+','+fi+')" style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;background:rgba(201,168,76,0.1);border:1px solid rgba(201,168,76,0.25);border-radius:3px;font-size:0.68rem;color:var(--gold);cursor:pointer;">📄 '+f.name+'</span>';
-        }).join('') + '</div>' : '') +
+          // Old format: inline files
+          if(e.files && e.files.length) {
+            return '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;">' +
+              e.files.map(function(f,fi){
+                if(f.type && f.type.startsWith('image/')) {
+                  return '<img src="'+f.data+'" style="height:36px;width:36px;object-fit:cover;border-radius:3px;cursor:pointer;border:1px solid var(--border);" onclick="expViewFile('+i+','+fi+')" title="'+f.name+'">';
+                }
+                return '<span onclick="expViewFile('+i+','+fi+')" style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;background:rgba(201,168,76,0.1);border:1px solid rgba(201,168,76,0.25);border-radius:3px;font-size:0.68rem;color:var(--gold);cursor:pointer;">📄 '+f.name+'</span>';
+              }).join('') + '</div>';
+          }
+          return '';
+        })() +
         '</div>' +
         '<div><span class="exp-cat-badge" style="background:'+expCatColor(e.lineitem||'General')+';color:'+expCatTextColor(e.lineitem||'General')+';">'+( e.lineitem||'Misc' )+'</span></div>' +
         '<div style="text-align:right;color:var(--danger);font-weight:600;">-$'+fmtDollar(e.amount)+'</div>' +
@@ -3746,13 +3761,36 @@ function expEditBudget(btn) {
   renderDealExpenses(d);
 }
 
-function expViewFile(expIdx, fileIdx) {
+async function expViewFile(expIdx, fileIdx) {
   var deals = load('active_deals',[]);
   var d = deals.find(function(x){return x.id===currentDealId;});
-  if(!d) return;
-  var f = d.expenses[expIdx] && d.expenses[expIdx].files && d.expenses[expIdx].files[fileIdx];
-  if(!f) return;
-  openFileData(f.data, f.type, f.name);
+  if(!d || !d.expenses[expIdx]) return;
+  var exp = d.expenses[expIdx];
+
+  var fileData = null, fileName = null, fileType = null;
+
+  // New format: receiptRefs pointing to separately stored files
+  if(exp.receiptRefs && exp.receiptRefs[fileIdx]) {
+    var ref = exp.receiptRefs[fileIdx];
+    try {
+      var stored = await fetch('/api/store/nc_' + ref.key).then(r=>r.json());
+      if(stored && stored.value) {
+        fileData = stored.value.data;
+        fileName = stored.value.name;
+        fileType = stored.value.type;
+      }
+    } catch(e) { console.error('Failed to load receipt:', e); }
+  }
+
+  // Old format fallback: inline files array
+  if(!fileData && exp.files && exp.files[fileIdx]) {
+    fileData = exp.files[fileIdx].data;
+    fileName = exp.files[fileIdx].name;
+    fileType = exp.files[fileIdx].type;
+  }
+
+  if(!fileData) { alert('Receipt not found.'); return; }
+  openFileData(fileData, fileType, fileName);
 }
 
 function openFileData(dataUrl, mimeType, fileName) {
@@ -4016,7 +4054,18 @@ function saveExpense() {
     d.expenses[idx].date     = document.getElementById('exp-date').value;
     if(expPendingFiles.length) {
       d.expenses[idx].receipt = fileNames;
-      d.expenses[idx].files   = expPendingFiles.slice();
+      // Save updated files separately
+      var editExpId = d.expenses[idx].id || ('exp_' + Date.now() + '_' + Math.random().toString(36).slice(2,6));
+      d.expenses[idx].id = editExpId;
+      var editRefs = [];
+      for(var _efi=0; _efi<expPendingFiles.length; _efi++) {
+        var _ef = expPendingFiles[_efi];
+        var editKey = 'receipt_' + editExpId + '_' + Math.random().toString(36).slice(2,6);
+        save(editKey, { name: _ef.name, type: _ef.type, data: _ef.data });
+        editRefs.push({ key: editKey, name: _ef.name, type: _ef.type });
+      }
+      d.expenses[idx].receiptRefs = editRefs;
+      d.expenses[idx].files = [];
     }
     save('active_deals', deals);
     closeModal('modal-add-expense');
@@ -4044,13 +4093,24 @@ function saveExpense() {
   if(!d) return;
   if(!d.expenses) d.expenses = [];
   var fileNames = expPendingFiles.map(function(f){return f.name;}).join(', ');
+  // Save each receipt file separately to avoid size limits on active_deals
+  var expId = 'exp_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+  var receiptRefs = [];
+  for(var _fi=0; _fi<expPendingFiles.length; _fi++) {
+    var _f = expPendingFiles[_fi];
+    var receiptKey = 'receipt_' + expId + '_' + Math.random().toString(36).slice(2,6);
+    save(receiptKey, { name: _f.name, type: _f.type, data: _f.data });
+    receiptRefs.push({ key: receiptKey, name: _f.name, type: _f.type });
+  }
   d.expenses.push({
-    desc:     document.getElementById('exp-desc').value || 'Expense',
-    lineitem: document.getElementById('exp-lineitem').value,
-    amount:   document.getElementById('exp-amount').value,
-    date:     document.getElementById('exp-date').value,
-    receipt:  fileNames,
-    files:    expPendingFiles.slice()
+    id:          expId,
+    desc:        document.getElementById('exp-desc').value || 'Expense',
+    lineitem:    document.getElementById('exp-lineitem').value,
+    amount:      document.getElementById('exp-amount').value,
+    date:        document.getElementById('exp-date').value,
+    receipt:     fileNames,
+    receiptRefs: receiptRefs,
+    files:       []  // file data stored separately via receiptRefs
   });
   save('active_deals', deals);
   closeModal('modal-add-expense');
