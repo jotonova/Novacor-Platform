@@ -905,87 +905,166 @@ async function sendNovaBooksSummaryEmail(req) {
     const auth = await getAuthedClient(req || { protocol: 'https', get: () => 'novacor-platform.onrender.com' });
     if (!auth) return;
     const year = new Date().getFullYear().toString();
+    const generatedOn = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
     const weekOf = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-    // Get summary data
+    // YTD summary
     const sumR = await db.execute({ sql: "SELECT type, category, amount FROM nb_transactions WHERE strftime('%Y',date)=?", args: [year] });
     let totalIncome = 0, totalExpenses = 0;
-    for (const t of sumR.rows) { if (t.type === 'income') totalIncome += t.amount; else totalExpenses += t.amount; }
+    const catGroups = {};
+    for (const t of sumR.rows) {
+      if (t.type === 'income') { totalIncome += t.amount; }
+      else {
+        totalExpenses += t.amount;
+        const cat = t.category || 'Uncategorized';
+        if (!catGroups[cat]) catGroups[cat] = { total: 0, count: 0 };
+        catGroups[cat].total += t.amount;
+        catGroups[cat].count++;
+      }
+    }
     const netProfit = totalIncome - totalExpenses;
     const estTax = netProfit > 0 ? netProfit * 0.9235 * 0.153 + netProfit * 0.22 : 0;
 
     const milR = await db.execute({ sql: "SELECT SUM(miles) as m, SUM(miles*rate) as d FROM nb_mileage WHERE strftime('%Y',date)=?", args: [year] });
     const taxPaidR = await db.execute({ sql: 'SELECT SUM(amount) as p FROM nb_tax_payments WHERE year=?', args: [year] });
 
-    // Get this week's imports
-    const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
-    const recentR = await db.execute({ sql: "SELECT * FROM nb_transactions WHERE description LIKE '%Auto-Import%' AND created_at >= ? ORDER BY date DESC", args: [weekAgo.toISOString()] });
+    // Last 10 transactions (any type)
+    const recentR = await db.execute({ sql: "SELECT * FROM nb_transactions ORDER BY date DESC, created_at DESC LIMIT 10" });
 
     const fmt = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-    const recentRows = recentR.rows.map(t => `
-      <tr>
-        <td style="padding:8px 12px;border-bottom:1px solid #e8e8e8;font-size:13px;">${t.date}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e8e8e8;font-size:13px;">${t.vendor || '—'}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e8e8e8;font-size:13px;">${t.category}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e8e8e8;font-size:13px;text-align:right;color:${t.type === 'income' ? '#27ae60' : '#e74c3c'};font-weight:600;">${t.type === 'income' ? '+' : '−'}${fmt(t.amount)}</td>
+    // IRS category rows sorted by total desc
+    const catRows = Object.entries(catGroups)
+      .sort((a, b) => b[1].total - a[1].total)
+      .map(([cat, g], i) => `
+        <tr style="background:${i % 2 === 0 ? '#ffffff' : '#f9f9f9'};">
+          <td style="padding:9px 14px;border-bottom:1px solid #eeeeee;font-size:13px;color:#333333;">${cat}</td>
+          <td style="padding:9px 14px;border-bottom:1px solid #eeeeee;font-size:13px;color:#666666;text-align:center;">${g.count}</td>
+          <td style="padding:9px 14px;border-bottom:1px solid #eeeeee;font-size:13px;font-weight:600;color:#c0392b;text-align:right;">${fmt(g.total)}</td>
+        </tr>`).join('');
+
+    const recentRows = recentR.rows.map((t, i) => `
+      <tr style="background:${i % 2 === 0 ? '#ffffff' : '#f9f9f9'};">
+        <td style="padding:9px 14px;border-bottom:1px solid #eeeeee;font-size:13px;color:#333333;">${t.date}</td>
+        <td style="padding:9px 14px;border-bottom:1px solid #eeeeee;font-size:13px;color:#333333;">${t.vendor || '—'}</td>
+        <td style="padding:9px 14px;border-bottom:1px solid #eeeeee;font-size:12px;color:#666666;">${t.category}</td>
+        <td style="padding:9px 14px;border-bottom:1px solid #eeeeee;font-size:13px;font-weight:600;text-align:right;color:${t.type === 'income' ? '#27ae60' : '#c0392b'};">${t.type === 'income' ? '+' : '−'}${fmt(t.amount)}</td>
       </tr>`).join('');
 
-    const html = `
-<!DOCTYPE html>
+    const thStyle = 'padding:10px 14px;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#ffffff;text-align:left;background:#0a1628;';
+
+    const html = `<!DOCTYPE html>
 <html>
-<head><meta charset="UTF-8"></head>
-<body style="margin:0;padding:0;background:#f4f4f4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-  <div style="max-width:600px;margin:32px auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
-    <div style="background:#060d1a;padding:28px 32px;text-align:center;">
-      <div style="font-size:11px;letter-spacing:0.15em;text-transform:uppercase;color:#d4af37;margin-bottom:6px;">Novacor LLC</div>
-      <div style="font-size:22px;font-weight:700;color:#ffffff;">NovaBooks Weekly Report</div>
-      <div style="font-size:13px;color:#8899aa;margin-top:6px;">Week of ${weekOf}</div>
-    </div>
-    <div style="padding:24px 32px;background:#f8f9fa;border-bottom:1px solid #e8e8e8;">
-      <div style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#8899aa;margin-bottom:16px;">Year-to-Date Snapshot — ${year}</div>
-      <div style="display:flex;gap:0;flex-wrap:wrap;">
-        <div style="flex:1;min-width:120px;padding:12px 16px;background:#fff;border-radius:6px;margin:4px;border:1px solid #e8e8e8;">
-          <div style="font-size:11px;color:#8899aa;margin-bottom:4px;">Total Income</div>
-          <div style="font-size:18px;font-weight:700;color:#27ae60;">${fmt(totalIncome)}</div>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0;padding:20px;font-family:Arial,sans-serif;background:#f5f5f5;color:#333333;">
+  <div style="max-width:620px;margin:0 auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.10);">
+
+    <!-- Header -->
+    <div style="background:#0a1628;padding:28px 32px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+        <div>
+          <div style="font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:#c9a84c;margin-bottom:5px;">Novacor LLC</div>
+          <div style="font-size:22px;font-weight:700;color:#ffffff;line-height:1.2;">NovaBooks Weekly Report</div>
+          <div style="font-size:12px;color:#6a8099;margin-top:5px;">Week of ${weekOf}</div>
         </div>
-        <div style="flex:1;min-width:120px;padding:12px 16px;background:#fff;border-radius:6px;margin:4px;border:1px solid #e8e8e8;">
-          <div style="font-size:11px;color:#8899aa;margin-bottom:4px;">Total Expenses</div>
-          <div style="font-size:18px;font-weight:700;color:#e74c3c;">${fmt(totalExpenses)}</div>
-        </div>
-        <div style="flex:1;min-width:120px;padding:12px 16px;background:#fff;border-radius:6px;margin:4px;border:1px solid #e8e8e8;">
-          <div style="font-size:11px;color:#8899aa;margin-bottom:4px;">Net Profit</div>
-          <div style="font-size:18px;font-weight:700;color:${netProfit >= 0 ? '#27ae60' : '#e74c3c'};">${fmt(netProfit)}</div>
-        </div>
-        <div style="flex:1;min-width:120px;padding:12px 16px;background:#fff;border-radius:6px;margin:4px;border:1px solid #e8e8e8;">
-          <div style="font-size:11px;color:#8899aa;margin-bottom:4px;">Est. Tax Owed</div>
-          <div style="font-size:18px;font-weight:700;color:#d4af37;">${fmt(estTax)}</div>
+        <div style="text-align:right;">
+          <div style="font-size:11px;color:#6a8099;">Kingman, AZ</div>
+          <div style="font-size:11px;color:#6a8099;">Real Estate Investment</div>
+          <div style="font-size:10px;color:#4a5a6a;margin-top:4px;">Generated: ${generatedOn}</div>
         </div>
       </div>
     </div>
-    <div style="padding:16px 32px;background:#f8f9fa;border-bottom:1px solid #e8e8e8;display:flex;gap:24px;flex-wrap:wrap;">
-      <div><span style="font-size:12px;color:#8899aa;">Mileage Deduction: </span><span style="font-size:13px;font-weight:600;color:#3498db;">${fmt(milR.rows[0]?.d || 0)}</span> <span style="font-size:11px;color:#aaa;">(${(milR.rows[0]?.m || 0).toFixed(1)} mi)</span></div>
-      <div><span style="font-size:12px;color:#8899aa;">Tax Paid YTD: </span><span style="font-size:13px;font-weight:600;color:#27ae60;">${fmt(taxPaidR.rows[0]?.p || 0)}</span></div>
+
+    <!-- Accent bar -->
+    <div style="height:3px;background:#c9a84c;"></div>
+
+    <!-- YTD Summary Cards -->
+    <div style="padding:24px 28px;background:#f5f5f5;border-bottom:1px solid #e0e0e0;">
+      <div style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#888888;margin-bottom:14px;">Year-to-Date Snapshot — ${year}</div>
+      <table style="width:100%;border-collapse:collapse;">
+        <tr>
+          <td style="padding:4px;">
+            <div style="background:#ffffff;border:1px solid #e0e0e0;border-radius:6px;padding:14px 16px;border-top:3px solid #27ae60;">
+              <div style="font-size:11px;color:#888888;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.06em;">Total Income</div>
+              <div style="font-size:20px;font-weight:700;color:#27ae60;">${fmt(totalIncome)}</div>
+            </div>
+          </td>
+          <td style="padding:4px;">
+            <div style="background:#ffffff;border:1px solid #e0e0e0;border-radius:6px;padding:14px 16px;border-top:3px solid #c0392b;">
+              <div style="font-size:11px;color:#888888;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.06em;">Total Expenses</div>
+              <div style="font-size:20px;font-weight:700;color:#c0392b;">${fmt(totalExpenses)}</div>
+            </div>
+          </td>
+          <td style="padding:4px;">
+            <div style="background:#ffffff;border:1px solid #e0e0e0;border-radius:6px;padding:14px 16px;border-top:3px solid ${netProfit >= 0 ? '#27ae60' : '#c0392b'};">
+              <div style="font-size:11px;color:#888888;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.06em;">Net Profit</div>
+              <div style="font-size:20px;font-weight:700;color:${netProfit >= 0 ? '#27ae60' : '#c0392b'};">${fmt(netProfit)}</div>
+            </div>
+          </td>
+          <td style="padding:4px;">
+            <div style="background:#ffffff;border:1px solid #e0e0e0;border-radius:6px;padding:14px 16px;border-top:3px solid #c9a84c;">
+              <div style="font-size:11px;color:#888888;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.06em;">Est. Tax Owed</div>
+              <div style="font-size:20px;font-weight:700;color:#c9a84c;">${fmt(estTax)}</div>
+            </div>
+          </td>
+        </tr>
+      </table>
+      <div style="margin-top:10px;padding:10px 14px;background:#ffffff;border:1px solid #e0e0e0;border-radius:6px;font-size:12px;color:#666666;">
+        <span style="margin-right:20px;">🚗 Mileage Deduction: <strong style="color:#3498db;">${fmt(milR.rows[0]?.d || 0)}</strong> <span style="color:#aaa;">(${(milR.rows[0]?.m || 0).toFixed(1)} mi)</span></span>
+        <span>✅ Tax Paid YTD: <strong style="color:#27ae60;">${fmt(taxPaidR.rows[0]?.p || 0)}</strong></span>
+      </div>
     </div>
-    <div style="padding:24px 32px;">
-      <div style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#8899aa;margin-bottom:16px;">Auto-Imported This Week (${recentR.rows.length} transactions)</div>
-      ${recentR.rows.length > 0 ? `
-      <table style="width:100%;border-collapse:collapse;border:1px solid #e8e8e8;border-radius:6px;overflow:hidden;">
+
+    <!-- IRS Category Breakdown -->
+    <div style="padding:24px 28px;border-bottom:1px solid #e0e0e0;">
+      <div style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#888888;margin-bottom:14px;">IRS Category Breakdown — ${year} Expenses</div>
+      ${catRows ? `
+      <table style="width:100%;border-collapse:collapse;border-radius:6px;overflow:hidden;border:1px solid #e0e0e0;">
         <thead>
-          <tr style="background:#f8f9fa;">
-            <th style="padding:10px 12px;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#8899aa;text-align:left;border-bottom:1px solid #e8e8e8;">Date</th>
-            <th style="padding:10px 12px;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#8899aa;text-align:left;border-bottom:1px solid #e8e8e8;">Vendor</th>
-            <th style="padding:10px 12px;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#8899aa;text-align:left;border-bottom:1px solid #e8e8e8;">Category</th>
-            <th style="padding:10px 12px;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#8899aa;text-align:right;border-bottom:1px solid #e8e8e8;">Amount</th>
+          <tr>
+            <th style="${thStyle}">Category</th>
+            <th style="${thStyle}text-align:center;">Txns</th>
+            <th style="${thStyle}text-align:right;">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${catRows}
+          <tr style="background:#f5f5f5;">
+            <td style="padding:10px 14px;font-size:13px;font-weight:700;color:#333333;" colspan="2">Total Expenses</td>
+            <td style="padding:10px 14px;font-size:13px;font-weight:700;color:#c0392b;text-align:right;">${fmt(totalExpenses)}</td>
+          </tr>
+        </tbody>
+      </table>` : '<div style="color:#888888;font-size:13px;">No expenses recorded yet this year.</div>'}
+    </div>
+
+    <!-- Recent Transactions -->
+    <div style="padding:24px 28px;border-bottom:1px solid #e0e0e0;">
+      <div style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#888888;margin-bottom:14px;">Recent Transactions (Last 10)</div>
+      ${recentR.rows.length > 0 ? `
+      <table style="width:100%;border-collapse:collapse;border-radius:6px;overflow:hidden;border:1px solid #e0e0e0;">
+        <thead>
+          <tr>
+            <th style="${thStyle}">Date</th>
+            <th style="${thStyle}">Vendor</th>
+            <th style="${thStyle}">Category</th>
+            <th style="${thStyle}text-align:right;">Amount</th>
           </tr>
         </thead>
         <tbody>${recentRows}</tbody>
-      </table>` : '<div style="color:#8899aa;font-size:13px;padding:8px 0;">No new transactions auto-imported this week.</div>'}
+      </table>` : '<div style="color:#888888;font-size:13px;">No transactions recorded yet.</div>'}
     </div>
-    <div style="padding:20px 32px;background:#060d1a;text-align:center;">
-      <div style="font-size:12px;color:#4a6080;">NovaBooks — Novacor LLC Internal Accounting</div>
-      <div style="font-size:11px;color:#3a4a5a;margin-top:4px;">Auto-generated every Monday 8:00 AM MST</div>
+
+    <!-- Footer -->
+    <div style="padding:18px 28px;background:#0a1628;">
+      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+        <div style="font-size:11px;color:#4a6080;">Novacor LLC — Confidential | Generated by Pro-Vision Platform</div>
+        <div style="font-size:11px;color:#3a4a5a;">Auto-generated every Monday 8:00 AM MST</div>
+      </div>
     </div>
+
   </div>
 </body>
 </html>`;
