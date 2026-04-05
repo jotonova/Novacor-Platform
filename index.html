@@ -3095,16 +3095,16 @@ function renderDashboard() {
     return s + (sold - dealExps - purchase);
   }, 0);
 
-  // YTD Expenses = nb_expenses this year + all active deal expenses this year
-  const nbExp   = expenses.filter(e => inThisYear(e.date)).reduce((s,e) => s + parseFloat(e.amount||0), 0);
-  const dealExp = deals.reduce((s,d) => s + ((d.expenses||[]).filter(e => inThisYear(e.date)).reduce((a,e) => a + parseFloat(e.amount||0), 0)), 0);
-  const totalExp = nbExp + dealExp;
+  // YTD Expenses = sum of all expenses across active deals
+  const ytdExpenses = deals.reduce((total, deal) => {
+    return total + (deal.expenses||[]).reduce((s,e) => s + (parseFloat(e.amount)||0), 0);
+  }, 0);
 
   document.getElementById('dashboard-stats').innerHTML = `
     <div class="stat-box"><div class="stat-box-num">${deals.length}</div><div class="stat-box-label">Active Deals</div></div>
     <div class="stat-box"><div class="stat-box-num">${closed.length}</div><div class="stat-box-label">Closed Deals</div></div>
     <div class="stat-box"><div class="stat-box-num" style="color:${totalIncome>=0?'#2ecc71':'#e74c3c'}">$${fmtNum(totalIncome)}</div><div class="stat-box-label">YTD Income</div></div>
-    <div class="stat-box"><div class="stat-box-num">$${fmtNum(totalExp)}</div><div class="stat-box-label">YTD Expenses</div></div>
+    <div class="stat-box"><div class="stat-box-num">$${fmtNum(ytdExpenses)}</div><div class="stat-box-label">YTD Expenses</div></div>
     <div class="stat-box"><div class="stat-box-num" style="color:${(totalIncome*0.8)>=0?'#2ecc71':'#e74c3c'}">$${fmtNum(totalIncome*0.8)}</div><div class="stat-box-label">Net P&L (after tax)</div></div>
   `;
 
@@ -3143,20 +3143,21 @@ function renderDashboard() {
 async function loadDealCardPhotos(deals) {
   for(const d of deals) {
     if(!d.photoKey) continue;
-    if(d.photo) {
-      // Inline photo still present (legacy) — show it
-      const img = document.querySelector(`[data-deal-photo="${d.id}"]`);
-      if(img) { img.src = d.photo; img.style.display=''; const ph=document.getElementById('dp-placeholder-'+d.id); if(ph) ph.remove(); }
+    const img = document.querySelector(`[data-deal-photo="${d.id}"]`);
+    if(!img) continue;
+    // Check in-memory cache first — avoids race condition right after saveDeal()
+    const cached = _cache['nc_' + d.photoKey] || (d.photo || null);
+    if(cached) {
+      img.src = cached; img.style.display = '';
+      const ph = document.getElementById('dp-placeholder-' + d.id); if(ph) ph.remove();
       continue;
     }
     try {
       const r = await fetch('/api/store/nc_' + d.photoKey).then(r=>r.json());
       const src = typeof r.value === 'string' ? JSON.parse(r.value) : r.value;
       if(src) {
-        const img = document.querySelector(`[data-deal-photo="${d.id}"]`);
-        if(img) { img.src = src; img.style.display = ''; }
-        const ph = document.getElementById('dp-placeholder-' + d.id);
-        if(ph) ph.remove();
+        img.src = src; img.style.display = '';
+        const ph = document.getElementById('dp-placeholder-' + d.id); if(ph) ph.remove();
       }
     } catch(e) {}
   }
