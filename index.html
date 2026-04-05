@@ -2113,7 +2113,9 @@ label {
       <input id="nb-txn-filter-start" type="date" onchange="nbLoadTransactions()" style="padding:8px 12px;background:var(--card-bg);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:0.82rem;">
       <input id="nb-txn-filter-end" type="date" onchange="nbLoadTransactions()" style="padding:8px 12px;background:var(--card-bg);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:0.82rem;">
       <button onclick="nbOpenTxnModal()" style="padding:8px 18px;background:var(--gold);color:var(--navy);border:none;border-radius:6px;font-weight:700;font-size:0.78rem;cursor:pointer;white-space:nowrap;">+ Add</button>
+      <button id="nb-txn-view-toggle" onclick="nbToggleTxnView()" style="padding:7px 14px;background:transparent;border:1px solid var(--gold);border-radius:4px;color:var(--gold);font-size:0.75rem;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;font-weight:600;">📊 Category View</button>
     </div>
+    <div id="nb-txn-list" style="display:none;"></div>
     <div id="nb-txn-table-wrap" style="background:var(--card-bg);border:1px solid var(--border);border-radius:8px;overflow:hidden;">
       <table style="width:100%;border-collapse:collapse;" id="nb-txn-table">
         <thead><tr style="border-bottom:1px solid var(--border);">
@@ -2261,6 +2263,7 @@ label {
           <label style="display:flex;align-items:center;gap:8px;font-size:0.8rem;color:var(--text);cursor:pointer;"><input type="checkbox" id="rpt-tax" checked style="accent-color:var(--gold);"> Tax Summary</label>
           <label style="display:flex;align-items:center;gap:8px;font-size:0.8rem;color:var(--text);cursor:pointer;"><input type="checkbox" id="rpt-1099" style="accent-color:var(--gold);"> 1099 Contractors</label>
           <label style="display:flex;align-items:center;gap:8px;font-size:0.8rem;color:var(--text);cursor:pointer;"><input type="checkbox" id="rpt-txns" style="accent-color:var(--gold);"> All Transactions</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:0.8rem;color:var(--text);cursor:pointer;"><input type="checkbox" id="rpt-irs-cats" checked style="accent-color:var(--gold);"> IRS Category Summary</label>
         </div>
       </div>
 
@@ -2606,6 +2609,23 @@ label {
       </select>
     </div>
     <div class="form-group"><label>Amount ($)</label><input type="number" id="exp-amount" placeholder="1500"></div>
+  </div>
+  <div class="form-group" style="margin-top:14px;">
+    <label class="form-label">IRS CATEGORY <span style="font-size:0.68rem;color:var(--text-muted);font-weight:400;">(for NovaBooks)</span></label>
+    <select id="exp-irs-category" style="width:100%;padding:10px 12px;background:var(--input-bg,#0d1e35);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.85rem;">
+      <option value="">— Select IRS Category —</option>
+      <option value="Cost of Goods Sold">Cost of Goods Sold</option>
+      <option value="Rehab — Materials">Rehab — Materials</option>
+      <option value="Rehab — Labor">Rehab — Labor</option>
+      <option value="Permits & Fees">Permits &amp; Fees</option>
+      <option value="Carrying — Interest">Carrying — Interest</option>
+      <option value="Carrying — Insurance">Carrying — Insurance</option>
+      <option value="Carrying — Utilities">Carrying — Utilities</option>
+      <option value="Selling Costs">Selling Costs</option>
+      <option value="Tools & Equipment">Tools &amp; Equipment</option>
+      <option value="Office & Admin">Office &amp; Admin</option>
+      <option value="Miscellaneous">Miscellaneous</option>
+    </select>
   </div>
   <div class="form-group"><label>Date</label><input type="date" id="exp-date"></div>
   <div class="form-group">
@@ -3776,6 +3796,9 @@ function renderDealExpenses(d) {
           }
           return '';
         })() +
+        (e.irsCategory
+          ? '<div style="margin-top:5px;"><span style="font-size:0.68rem;background:rgba(212,175,55,0.12);color:var(--gold);padding:2px 7px;border-radius:10px;">'+e.irsCategory+'</span></div>'
+          : '<div style="margin-top:5px;"><span style="font-size:0.68rem;background:rgba(231,76,60,0.1);color:#e74c3c;padding:2px 7px;border-radius:10px;">⚠️ No IRS Category</span></div>') +
         '</div>' +
         '<div><span class="exp-cat-badge" style="background:'+expCatColor(e.lineitem||'General')+';color:'+expCatTextColor(e.lineitem||'General')+';">'+( e.lineitem||'Misc' )+'</span></div>' +
         '<div style="text-align:right;color:var(--danger);font-weight:600;">-$'+fmtDollar(e.amount)+'</div>' +
@@ -4067,6 +4090,8 @@ function editDealExpense(i) {
   document.getElementById('exp-date').value = e.date || '';
   var lineitem = document.getElementById('exp-lineitem');
   if(lineitem && e.lineitem) lineitem.value = e.lineitem;
+  const irsEl = document.getElementById('exp-irs-category');
+  if(irsEl) irsEl.value = e.irsCategory || '';
   expPendingFiles = (e.files || []).slice();
   document.getElementById('exp-upload-names').textContent = e.receipt || '';
   var modal = document.getElementById('modal-add-expense');
@@ -4117,10 +4142,11 @@ async function saveExpense() {
     var d = deals.find(function(x){ return x.id === currentDealId; });
     if(!d || !d.expenses[idx]) return;
     var fileNames = expPendingFiles.map(function(f){ return f.name; }).join(', ');
-    d.expenses[idx].desc     = document.getElementById('exp-desc').value || 'Expense';
-    d.expenses[idx].lineitem = document.getElementById('exp-lineitem').value;
-    d.expenses[idx].amount   = document.getElementById('exp-amount').value;
-    d.expenses[idx].date     = document.getElementById('exp-date').value;
+    d.expenses[idx].desc        = document.getElementById('exp-desc').value || 'Expense';
+    d.expenses[idx].lineitem    = document.getElementById('exp-lineitem').value;
+    d.expenses[idx].irsCategory = document.getElementById('exp-irs-category')?.value || d.expenses[idx].irsCategory || '';
+    d.expenses[idx].amount      = document.getElementById('exp-amount').value;
+    d.expenses[idx].date        = document.getElementById('exp-date').value;
     if(expPendingFiles.length) {
       d.expenses[idx].receipt = fileNames;
       // Save updated files separately
@@ -4139,6 +4165,7 @@ async function saveExpense() {
     save('active_deals', deals);
     closeModal('modal-add-expense');
     ['exp-desc','exp-amount','exp-date'].forEach(function(id){ document.getElementById(id).value=''; });
+    const irsElEdit = document.getElementById('exp-irs-category'); if(irsElEdit) irsElEdit.value='';
     document.getElementById('exp-upload-names').textContent = '';
     document.getElementById('exp-upload-area').style.borderColor = 'var(--border)';
     document.getElementById('exp-file-input').value = '';
@@ -4175,6 +4202,7 @@ async function saveExpense() {
     id:          expId,
     desc:        document.getElementById('exp-desc').value || 'Expense',
     lineitem:    document.getElementById('exp-lineitem').value,
+    irsCategory: document.getElementById('exp-irs-category')?.value || '',
     amount:      document.getElementById('exp-amount').value,
     date:        document.getElementById('exp-date').value,
     receipt:     fileNames,
@@ -4190,6 +4218,7 @@ async function saveExpense() {
   closeModal('modal-add-expense');
   // Reset form
   ['exp-desc','exp-amount','exp-date'].forEach(function(id){ document.getElementById(id).value=''; });
+  const irsElNew = document.getElementById('exp-irs-category'); if(irsElNew) irsElNew.value='';
   document.getElementById('exp-upload-names').textContent = '';
   document.getElementById('exp-upload-area').style.borderColor = 'var(--border)';
   document.getElementById('exp-file-input').value = '';
@@ -6300,6 +6329,78 @@ window.bulkImportNotionExpenses = async function() {
     nbLoadDashboard();
   };
 
+  let _nbTxnCategoryView = false;
+
+  window.nbToggleTxnView = function() {
+    _nbTxnCategoryView = !_nbTxnCategoryView;
+    const btn = $('nb-txn-view-toggle');
+    if(btn) btn.textContent = _nbTxnCategoryView ? '☰ List View' : '📊 Category View';
+    nbLoadTransactions();
+  };
+
+  window.nbRenderCategoryView = function(transactions) {
+    const container = $('nb-txn-list');
+    if(!container) return;
+    $('nb-txn-table-wrap').style.display = 'none';
+    container.style.display = 'block';
+    const groups = {};
+    transactions.forEach(t => {
+      const cat = t.category || 'Uncategorized';
+      if(!groups[cat]) groups[cat] = { total: 0, txns: [] };
+      groups[cat].total += parseFloat(t.amount) || 0;
+      groups[cat].txns.push(t);
+    });
+    const fmtC = n => '$' + Number(n).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    const grandTotal = Object.values(groups).reduce((s,g)=>s+g.total, 0);
+    container.innerHTML = Object.entries(groups)
+      .sort((a,b) => b[1].total - a[1].total)
+      .map(([cat, group]) => `
+        <div class="nb-cat-group" style="margin-bottom:4px;">
+          <div onclick="nbToggleCatGroup(this)" style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--card-bg);border:1px solid var(--border);border-radius:6px;cursor:pointer;user-select:none;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span style="color:var(--gold);font-size:0.8rem;">▶</span>
+              <span style="font-family:'Barlow Condensed',sans-serif;font-size:0.85rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--text);">${cat}</span>
+              <span style="font-size:0.72rem;color:var(--text-muted);">${group.txns.length} transaction${group.txns.length!==1?'s':''}</span>
+            </div>
+            <span style="font-weight:700;color:var(--danger);font-size:0.9rem;">${fmtC(group.total)}</span>
+          </div>
+          <div class="nb-cat-rows" style="display:none;border:1px solid var(--border);border-top:none;border-radius:0 0 6px 6px;overflow:hidden;">
+            ${group.txns.map(t=>`
+              <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:12px;align-items:center;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.8rem;">
+                <div>
+                  <div style="color:var(--text);font-weight:500;">${t.vendor||t.description||'Transaction'}</div>
+                  <div style="color:var(--text-muted);font-size:0.72rem;">${t.description||''}</div>
+                </div>
+                <div style="color:var(--text-muted);white-space:nowrap;">${t.date||''}</div>
+                <div style="color:var(--danger);font-weight:600;white-space:nowrap;">${fmtC(t.amount)}</div>
+                <button onclick="nbEditTxn(${JSON.stringify(t).replace(/"/g,'&quot;')})" style="padding:3px 10px;background:transparent;border:1px solid var(--border);border-radius:4px;color:var(--text-muted);font-size:0.7rem;cursor:pointer;">✏️</button>
+              </div>
+            `).join('')}
+            <div style="padding:10px 16px;display:flex;justify-content:flex-end;background:rgba(212,175,55,0.04);">
+              <span style="font-size:0.78rem;color:var(--text-muted);">Subtotal: </span>
+              <span style="font-size:0.78rem;font-weight:700;color:var(--danger);margin-left:8px;">${fmtC(group.total)}</span>
+            </div>
+          </div>
+        </div>
+      `).join('') + `
+      <div style="padding:16px;display:flex;justify-content:flex-end;border-top:2px solid var(--border);margin-top:8px;">
+        <span style="font-family:'Barlow Condensed',sans-serif;font-size:0.85rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-muted);margin-right:12px;">Total Expenses</span>
+        <span style="font-size:1rem;font-weight:700;color:var(--danger);">${fmtC(grandTotal)}</span>
+      </div>`;
+  };
+
+  window.nbToggleCatGroup = function(header) {
+    const rows = header.nextElementSibling;
+    const arrow = header.querySelector('span');
+    if(rows.style.display === 'none') {
+      rows.style.display = 'block';
+      arrow.textContent = '▼';
+    } else {
+      rows.style.display = 'none';
+      arrow.textContent = '▶';
+    }
+  };
+
   window.nbLoadTransactions = async function() {
     const params=new URLSearchParams();
     const s=$('nb-txn-search').value; if(s) params.set('search',s);
@@ -6309,6 +6410,9 @@ window.bulkImportNotionExpenses = async function() {
     const sd=$('nb-txn-filter-start').value; if(sd) params.set('start_date',sd);
     const ed=$('nb-txn-filter-end').value; if(ed) params.set('end_date',ed);
     const txns=await fetch('/api/nb/transactions?'+params).then(r=>r.json());
+    if(_nbTxnCategoryView) { nbRenderCategoryView(txns); return; }
+    $('nb-txn-list').style.display='none';
+    $('nb-txn-table-wrap').style.display='';
     const acctMap=Object.fromEntries(_nbAccounts.map(a=>[a.id,a.name]));
     const dealMap=Object.fromEntries(_nbDeals.map(d=>[d.id,d.address]));
     $('nb-txn-tbody').innerHTML=txns.length?txns.map(t=>`
@@ -6701,7 +6805,8 @@ window.bulkImportNotionExpenses = async function() {
       pl:$('rpt-pl').checked, income:$('rpt-income').checked,
       expenses:$('rpt-expenses').checked, deals:$('rpt-deals').checked,
       mileage:$('rpt-mileage').checked, tax:$('rpt-tax').checked,
-      c1099:$('rpt-1099').checked, txns:$('rpt-txns').checked
+      c1099:$('rpt-1099').checked, txns:$('rpt-txns').checked,
+      irsCategories:$('rpt-irs-cats').checked
     };
 
     const params=new URLSearchParams({start_date:startDate,end_date:endDate});
@@ -6798,7 +6903,8 @@ window.bulkImportNotionExpenses = async function() {
 <style>
   *{box-sizing:border-box;margin:0;padding:0;}
   body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#1a1a2e;background:#fff;}
-  @media print{.no-print{display:none!important;} body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+  @page{margin:0.75in;}
+  @media print{.no-print{display:none!important;} body{-webkit-print-color-adjust:exact;print-color-adjust:exact;} .report-footer{display:block!important;}}
   .page-break{page-break-before:always;}
   table{width:100%;border-collapse:collapse;}
   h2{font-size:14px;letter-spacing:0.1em;text-transform:uppercase;color:#060d1a;margin:32px 0 16px;padding-bottom:8px;border-bottom:2px solid #d4af37;}
@@ -6806,11 +6912,20 @@ window.bulkImportNotionExpenses = async function() {
 </style>
 </head>
 <body style="padding:48px;">
-  <div style="text-align:center;padding:48px 0 40px;border-bottom:3px solid #060d1a;margin-bottom:40px;">
-    <div style="font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:#d4af37;margin-bottom:10px;">Novacor LLC — Internal Accounting</div>
-    <div style="font-size:32px;font-weight:700;color:#060d1a;margin-bottom:8px;">NovaBooks Financial Report</div>
-    <div style="font-size:16px;color:#555;margin-bottom:4px;">${periodLabel}</div>
-    <div style="font-size:12px;color:#999;margin-top:16px;">Generated: ${new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding-bottom:16px;border-bottom:2px solid #c9a84c;">
+    <div style="display:flex;align-items:center;gap:16px;">
+      <img src="/novacor-logo.png" onerror="this.style.display='none'" style="height:48px;width:auto;" alt="Novacor LLC">
+      <div>
+        <div style="font-family:'Barlow Condensed',Georgia,sans-serif;font-size:1.4rem;font-weight:700;color:#0a1628;letter-spacing:0.05em;">NOVACOR LLC</div>
+        <div style="font-size:0.75rem;color:#666;margin-top:2px;">Kingman, AZ | Real Estate Investment</div>
+      </div>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-size:1rem;font-weight:700;color:#0a1628;">NovaBooks Financial Report</div>
+      <div style="font-size:0.75rem;color:#666;margin-top:2px;">${periodLabel}</div>
+      <div style="font-size:0.75rem;color:#666;">Generated: ${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
+      <div style="font-size:0.75rem;color:#666;">Confidential — For Tax Purposes Only</div>
+    </div>
   </div>
   ${includes.pl?`
   <div class="section">
@@ -6833,6 +6948,21 @@ window.bulkImportNotionExpenses = async function() {
       <thead><tr><th style="${thStyle}">Category</th><th style="${thStyle}text-align:right;">Total</th></tr></thead>
       <tbody>${catRows}</tbody>
       <tfoot><tr style="background:#f8f9fa;"><td style="padding:12px 16px;font-weight:700;font-size:14px;">Total Expenses</td><td style="padding:12px 16px;text-align:right;font-weight:700;font-size:14px;color:#e74c3c;">${fmt(totalExpenses)}</td></tr></tfoot>
+    </table>
+  </div>`:''}
+  ${includes.irsCategories&&expenses.length?`
+  <div class="section">
+    <h2>IRS Category Summary</h2>
+    <table>
+      <thead><tr><th style="${thStyle}">Category</th><th style="${thStyle}text-align:right;">Transactions</th><th style="${thStyle}text-align:right;">Total</th></tr></thead>
+      <tbody>
+        ${(()=>{
+          const catGroups={};
+          expenses.forEach(t=>{const cat=t.category||'Uncategorized';if(!catGroups[cat])catGroups[cat]={total:0,count:0};catGroups[cat].total+=parseFloat(t.amount)||0;catGroups[cat].count++;});
+          return Object.entries(catGroups).sort((a,b)=>b[1].total-a[1].total).map(([cat,g])=>`<tr><td style="${tdStyle}">${cat}</td><td style="${tdStyle}text-align:right;">${g.count}</td><td style="${tdStyle}text-align:right;font-weight:600;color:#e74c3c;">${fmt(g.total)}</td></tr>`).join('');
+        })()}
+        <tr style="background:#f8f9fa;"><td style="padding:12px 16px;font-weight:700;" colspan="2">Total Expenses</td><td style="padding:12px 16px;text-align:right;font-weight:700;color:#e74c3c;">${fmt(totalExpenses)}</td></tr>
+      </tbody>
     </table>
   </div>`:''}
   ${includes.deals&&dealRows?`
@@ -6891,9 +7021,10 @@ window.bulkImportNotionExpenses = async function() {
       <tbody>${txns.map(t=>`<tr><td style="${tdStyle}">${t.date}</td><td style="${tdStyle}">${t.vendor||'—'}</td><td style="${tdStyle}">${t.category}</td><td style="${tdStyle}color:${t.type==='income'?'#27ae60':'#e74c3c'};">${t.type}</td><td style="${tdStyle}text-align:right;font-weight:600;color:${t.type==='income'?'#27ae60':'#e74c3c'};">${t.type==='income'?'+':'−'}${fmt(t.amount)}</td></tr>`).join('')}</tbody>
     </table>
   </div>`:''}
-  <div style="margin-top:48px;padding-top:24px;border-top:2px solid #060d1a;text-align:center;">
-    <div style="font-size:11px;color:#999;">Novacor LLC — NovaBooks Internal Accounting System</div>
-    <div style="font-size:11px;color:#bbb;margin-top:4px;">This report is confidential and intended for internal use only</div>
+  <div class="report-footer" style="margin-top:40px;padding-top:12px;border-top:1px solid #c9a84c;display:flex;justify-content:space-between;font-size:0.65rem;color:#999;">
+    <span>Novacor LLC — Confidential</span>
+    <span>Generated by Pro-Vision Platform</span>
+    <span>${new Date().getFullYear()} Tax Documentation</span>
   </div>
 </body>
 </html>`;
@@ -6981,8 +7112,9 @@ window.bulkImportNotionExpenses = async function() {
         Math.abs(t.amount - amount) < 1.00 &&
         Math.abs(new Date(t.date) - new Date(date)) < 3*24*60*60*1000
       );
-      const cat = catMap[exp.lineitem]||catMap[exp.category]||catMap[exp.vendor]||'Miscellaneous';
-      const needsReview = !catMap[exp.lineitem] && !catMap[exp.category] && !catMap[exp.vendor];
+      // Use IRS category set by user at entry — no auto-mapping
+      const cat = exp.irsCategory || catMap[exp.lineitem] || catMap[exp.category] || catMap[exp.label] || catMap[exp.vendor] || '';
+      const needsReview = !exp.irsCategory;
       return { i, exp, amount, date, cat, isDupe, needsReview };
     });
 
@@ -6993,8 +7125,11 @@ window.bulkImportNotionExpenses = async function() {
         <td style="padding:8px 10px;font-size:0.78rem;color:var(--text);">${p.exp.lineitem||p.exp.category||p.exp.vendor||'Expense'}</td>
         <td style="padding:8px 10px;font-size:0.78rem;color:var(--text);">${p.date}</td>
         <td style="padding:8px 10px;font-size:0.78rem;font-weight:600;color:var(--text);">${p.amount.toFixed(2)}</td>
-        <td style="padding:8px 10px;font-size:0.72rem;color:${p.needsReview?'var(--gold)':'var(--text-muted)'};">${p.cat}${p.needsReview?' \u26a0\ufe0f Review':''}</td>
-        <td style="padding:8px 10px;font-size:0.7rem;color:#e74c3c;">${p.isDupe?'\u26a0\ufe0f Possible duplicate':''}</td>
+        <td style="padding:8px 10px;font-size:0.72rem;color:${p.needsReview?'#e74c3c':'var(--text-muted)'};">${p.cat||'—'}</td>
+        <td style="padding:8px 10px;font-size:0.7rem;">
+          ${p.isDupe ? '<span style="color:#e74c3c;">\u26a0\ufe0f Possible duplicate</span>' : ''}
+          ${p.needsReview ? '<span style="color:#e74c3c;font-size:0.7rem;">\u26a0\ufe0f No IRS Category \u2014 set in deal first</span>' : '<span style="color:#2ecc71;font-size:0.7rem;">\u2713</span>'}
+        </td>
       </tr>`).join('');
 
     // Create and show modal
@@ -7051,7 +7186,7 @@ window.bulkImportNotionExpenses = async function() {
         account_id: accountId,
         deal_id: dealId,
         vendor: p.exp.lineitem||p.exp.category||p.exp.vendor||'Expense',
-        category: p.cat||'Miscellaneous',
+        category: p.exp.irsCategory || p.cat || 'Miscellaneous',
         amount: p.amount,
         type: 'expense',
         description: `[Dashboard Import] ${p.exp.lineitem||p.exp.category||p.exp.vendor||''}`,
