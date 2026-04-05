@@ -3752,18 +3752,35 @@ function expViewFile(expIdx, fileIdx) {
   if(!d) return;
   var f = d.expenses[expIdx] && d.expenses[expIdx].files && d.expenses[expIdx].files[fileIdx];
   if(!f) return;
-  if(f.type && f.type.startsWith('image/')) {
-    var w = window.open('','_blank');
-    w.document.write('<html><body style="margin:0;background:#000;display:flex;align-items:center;justify-content:center;min-height:100vh;"><img src="' + f.data + '" style="max-width:100%;max-height:100vh;object-fit:contain;"><\/body><\/html>');
-    w.document.close();
-  } else if(f.type === 'application/pdf' || f.name.endsWith('.pdf')) {
-    var w = window.open('','_blank');
-    w.document.write('<html><body style="margin:0;"><embed src="' + f.data + '" width="100%" height="100%" type="application/pdf"><\/body><\/html>');
-    w.document.close();
-  } else {
-    var a = document.createElement('a');
-    a.href = f.data; a.download = f.name;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  openFileData(f.data, f.type, f.name);
+}
+
+function openFileData(dataUrl, mimeType, fileName) {
+  if(!dataUrl) { alert('No file data found.'); return; }
+  try {
+    if(dataUrl.startsWith('data:')) {
+      const parts = dataUrl.split(',');
+      const mime = parts[0].match(/:(.*?);/)?.[1] || mimeType || 'application/octet-stream';
+      const binary = atob(parts[1]);
+      const array = new Uint8Array(binary.length);
+      for(let i=0;i<binary.length;i++) array[i] = binary.charCodeAt(i);
+      const blob = new Blob([array], {type: mime});
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, '_blank');
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+    } else {
+      window.open(dataUrl, '_blank');
+    }
+  } catch(e) {
+    console.error('Error opening file:', e);
+    // Fallback: try direct download
+    if(dataUrl && fileName) {
+      var a = document.createElement('a');
+      a.href = dataUrl; a.download = fileName;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    } else {
+      alert('Could not open file: ' + e.message);
+    }
   }
 }
 
