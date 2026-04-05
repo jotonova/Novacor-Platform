@@ -3716,7 +3716,7 @@ function renderDealExpenses(d) {
             return '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;">' +
               e.receiptRefs.map(function(ref,fi){
                 var icon = (ref.type && ref.type.startsWith('image/')) ? '🖼️' : '📄';
-                return '<span onclick="expViewFile('+i+','+fi+')" style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;background:rgba(201,168,76,0.1);border:1px solid rgba(201,168,76,0.25);border-radius:3px;font-size:0.68rem;color:var(--gold);cursor:pointer;">'+icon+' '+ref.name+'</span>';
+                return '<span onclick="expViewFile(\''+d.id+'\','+i+','+fi+')" style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;background:rgba(201,168,76,0.1);border:1px solid rgba(201,168,76,0.25);border-radius:3px;font-size:0.68rem;color:var(--gold);cursor:pointer;">'+icon+' '+ref.name+'</span>';
               }).join('') + '</div>';
           }
           // Old format: inline files
@@ -3724,9 +3724,9 @@ function renderDealExpenses(d) {
             return '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;">' +
               e.files.map(function(f,fi){
                 if(f.type && f.type.startsWith('image/')) {
-                  return '<img src="'+f.data+'" style="height:36px;width:36px;object-fit:cover;border-radius:3px;cursor:pointer;border:1px solid var(--border);" onclick="expViewFile('+i+','+fi+')" title="'+f.name+'">';
+                  return '<img src="'+f.data+'" style="height:36px;width:36px;object-fit:cover;border-radius:3px;cursor:pointer;border:1px solid var(--border);" onclick="expViewFile(\''+d.id+'\','+i+','+fi+')" title="'+f.name+'">';
                 }
-                return '<span onclick="expViewFile('+i+','+fi+')" style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;background:rgba(201,168,76,0.1);border:1px solid rgba(201,168,76,0.25);border-radius:3px;font-size:0.68rem;color:var(--gold);cursor:pointer;">📄 '+f.name+'</span>';
+                return '<span onclick="expViewFile(\''+d.id+'\','+i+','+fi+')" style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;background:rgba(201,168,76,0.1);border:1px solid rgba(201,168,76,0.25);border-radius:3px;font-size:0.68rem;color:var(--gold);cursor:pointer;">📄 '+f.name+'</span>';
               }).join('') + '</div>';
           }
           return '';
@@ -3761,9 +3761,9 @@ function expEditBudget(btn) {
   renderDealExpenses(d);
 }
 
-async function expViewFile(expIdx, fileIdx) {
+async function expViewFile(dealId, expIdx, fileIdx) {
   var deals = load('active_deals',[]);
-  var d = deals.find(function(x){return x.id===currentDealId;});
+  var d = deals.find(function(x){return x.id===(dealId||currentDealId);});
   if(!d || !d.expenses[expIdx]) return;
   var exp = d.expenses[expIdx];
 
