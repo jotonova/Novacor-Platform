@@ -4079,7 +4079,29 @@ function editDealExpense(i) {
   }
 }
 
-function saveExpense() {
+async function compressReceiptImage(file) {
+  // Only compress images, not PDFs
+  if(!file.type.startsWith('image/')) return file;
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      // Max 1200px wide, 85% quality — keeps it readable but small
+      const maxWidth = 1200;
+      const scale = img.width > maxWidth ? maxWidth / img.width : 1;
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const compressed = canvas.toDataURL('image/jpeg', 0.85);
+      resolve({ name: file.name.replace(/\.[^.]+$/, '.jpg'), type: 'image/jpeg', data: compressed });
+    };
+    img.onerror = () => resolve(file); // fallback to original
+    img.src = file.data;
+  });
+}
+
+async function saveExpense() {
   // Guard: must have an open deal
   if(!currentDealId) {
     console.error('[saveExpense] No currentDealId set');
@@ -4144,7 +4166,7 @@ function saveExpense() {
   var expId = 'exp_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
   var receiptRefs = [];
   for(var _fi=0; _fi<expPendingFiles.length; _fi++) {
-    var _f = expPendingFiles[_fi];
+    var _f = await compressReceiptImage(expPendingFiles[_fi]);
     var receiptKey = 'receipt_' + expId + '_' + Math.random().toString(36).slice(2,6);
     save(receiptKey, { name: _f.name, type: _f.type, data: _f.data });
     receiptRefs.push({ key: receiptKey, name: _f.name, type: _f.type });
@@ -4185,17 +4207,22 @@ function saveExpense() {
         body: JSON.stringify({ value: _cache['nc_' + ref.key] })
       }).then(function(r){ return r.ok ? r : Promise.reject('Upload failed'); });
     });
-    Promise.all(uploadPromises)
-      .then(function() {
-        newExp._uploading = false;
-        var deals2 = load('active_deals', []);
-        var d2 = deals2.find(function(x){ return x.id === currentDealId; });
-        if(d2) renderDealExpenses(d2);
-      })
-      .catch(function() {
-        newExp._uploading = false;
-        toast('Warning: receipt upload may have failed. Try re-adding.');
-      });
+    var timeoutPromise = new Promise(function(resolve){ setTimeout(function(){ resolve('timeout'); }, 30000); });
+    Promise.race([
+      Promise.all(uploadPromises).then(function(){ return 'done'; }),
+      timeoutPromise
+    ]).then(function(result) {
+      newExp._uploading = false;
+      var deals2 = load('active_deals', []);
+      var d2 = deals2.find(function(x){ return x.id === currentDealId; });
+      if(d2) renderDealExpenses(d2);
+      if(result === 'timeout') toast('Receipt upload timed out — try re-adding the receipt.');
+    }).catch(function() {
+      newExp._uploading = false;
+      var deals2 = load('active_deals', []);
+      var d2 = deals2.find(function(x){ return x.id === currentDealId; });
+      if(d2) renderDealExpenses(d2);
+    });
   }
 }
 
@@ -5245,6 +5272,10 @@ async function init() {
   var changed = false;
   deals.forEach(function(d) {
     if(d._expensesSeeded) { d.expenses = []; delete d._expensesSeeded; changed = true; }
+    // Clear any stuck uploading flags from previous sessions
+    if(Array.isArray(d.expenses)) {
+      d.expenses.forEach(function(e) { if(e._uploading) { e._uploading = false; changed = true; } });
+    }
   });
   if(changed) save('active_deals', deals);
   // Initialize contractors if first visit
