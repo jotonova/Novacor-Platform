@@ -270,10 +270,15 @@ await db.execute(`CREATE TABLE IF NOT EXISTS kv (
 )`);
 
 app.get('/api/store', async (req, res) => {
-  const result = await db.execute('SELECT key, value FROM kv');
-  const out = {};
-  for (const row of result.rows) out[row.key] = row.value;
-  res.json(out);
+  try {
+    // Exclude receipt data from bulk load — receipts are fetched individually on demand
+    const result = await db.execute(
+      "SELECT key, value FROM kv WHERE key NOT LIKE 'nc_receipt_%' AND key NOT LIKE 'backup_%'"
+    );
+    const out = {};
+    for (const row of result.rows) out[row.key] = row.value;
+    res.json(out);
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/store/:key', async (req, res) => {
