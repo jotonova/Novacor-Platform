@@ -271,9 +271,9 @@ await db.execute(`CREATE TABLE IF NOT EXISTS kv (
 
 app.get('/api/store', async (req, res) => {
   try {
-    // Exclude receipt data from bulk load — receipts are fetched individually on demand
+    // Exclude large binary data from bulk load — fetched individually on demand
     const result = await db.execute(
-      "SELECT key, value FROM kv WHERE key NOT LIKE 'nc_receipt_%' AND key NOT LIKE 'backup_%'"
+      "SELECT key, value FROM kv WHERE key NOT LIKE 'nc_receipt_%' AND key NOT LIKE 'nc_deal_photo_%' AND key NOT LIKE 'backup_%'"
     );
     const out = {};
     for (const row of result.rows) out[row.key] = row.value;

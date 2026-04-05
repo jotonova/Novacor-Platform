@@ -3116,7 +3116,11 @@ function renderDashboard() {
   grid.innerHTML = deals.map(d => `
     <div class="deal-card" onclick="openDealDetail('${d.id}')">
       <div class="deal-card-img">
-        ${d.photo ? `<img src="${d.photo}" alt="${d.address}">` : '<span>No Photo</span>'}
+        ${d.photo
+          ? `<img src="${d.photo}" alt="${d.address}">`
+          : d.photoKey
+            ? `<img data-deal-photo="${d.id}" src="" alt="${d.address}" style="display:none;"><span id="dp-placeholder-${d.id}">Loading...</span>`
+            : '<span>No Photo</span>'}
       </div>
       <div class="deal-card-body">
         <div class="deal-card-address">${d.address}</div>
@@ -3133,6 +3137,29 @@ function renderDashboard() {
       <div>New Deal</div>
     </div>
   `;
+  loadDealCardPhotos(deals);
+}
+
+async function loadDealCardPhotos(deals) {
+  for(const d of deals) {
+    if(!d.photoKey) continue;
+    if(d.photo) {
+      // Inline photo still present (legacy) — show it
+      const img = document.querySelector(`[data-deal-photo="${d.id}"]`);
+      if(img) { img.src = d.photo; img.style.display=''; const ph=document.getElementById('dp-placeholder-'+d.id); if(ph) ph.remove(); }
+      continue;
+    }
+    try {
+      const r = await fetch('/api/store/nc_' + d.photoKey).then(r=>r.json());
+      const src = typeof r.value === 'string' ? JSON.parse(r.value) : r.value;
+      if(src) {
+        const img = document.querySelector(`[data-deal-photo="${d.id}"]`);
+        if(img) { img.src = src; img.style.display = ''; }
+        const ph = document.getElementById('dp-placeholder-' + d.id);
+        if(ph) ph.remove();
+      }
+    } catch(e) {}
+  }
 }
 
 // ── Google Widgets ──────────────────────────────────────────────────────────
@@ -3449,9 +3476,11 @@ function fmtDollar(n) { return parseFloat(n||0).toLocaleString('en-US',{minimumF
 
 // ── Save Deal ──
 function saveDeal() {
-  const photo = document.getElementById('nd-photo-preview').src;
+  const photoSrc = document.getElementById('nd-photo-preview').src;
+  const photoData = photoSrc && photoSrc !== window.location.href && photoSrc.startsWith('data:') ? photoSrc : '';
+  const dealId = uid();
   const deal = {
-    id: uid(),
+    id: dealId,
     address: document.getElementById('nd-address').value.trim(),
     status: document.getElementById('nd-status').value,
     coe: document.getElementById('nd-coe').value,
@@ -3463,10 +3492,13 @@ function saveDeal() {
     dtype: document.getElementById('nd-dtype').value,
     ief: document.getElementById('nd-ief').value,
     notes: document.getElementById('nd-notes').value,
-    photo: photo && photo !== window.location.href ? photo : '',
+    photo: '',
+    photoKey: photoData ? ('deal_photo_' + dealId) : '',
     expenses: [], images: [], sow: [], files: []
   };
   if(!deal.address) { toast('Please enter a property address.'); return; }
+  // Save photo separately to keep active_deals lean
+  if(photoData) save('deal_photo_' + dealId, photoData);
   const deals = load('active_deals', []);
   deals.push(deal);
   save('active_deals', deals);
@@ -3519,6 +3551,13 @@ function openDealDetail(id) {
   const hero = document.getElementById('deal-detail-hero');
   if(d.photo) {
     hero.innerHTML = `<img src="${d.photo}" alt="${d.address}" style="width:100%;height:100%;object-fit:cover;">`;
+  } else if(d.photoKey) {
+    hero.innerHTML = '<span style="color:var(--text-muted);font-size:0.8rem;">Loading photo...</span>';
+    fetch('/api/store/nc_' + d.photoKey).then(r=>r.json()).then(r=>{
+      const src = typeof r.value === 'string' ? JSON.parse(r.value) : r.value;
+      if(src) hero.innerHTML = `<img src="${src}" alt="${d.address}" style="width:100%;height:100%;object-fit:cover;">`;
+      else hero.innerHTML = '<span>No photo uploaded</span>';
+    }).catch(()=>{ hero.innerHTML = '<span>No photo uploaded</span>'; });
   } else {
     hero.innerHTML = '<span>No photo uploaded</span>';
   }
@@ -4485,7 +4524,11 @@ function renderClosed() {
     const profit = parseFloat(d.sale||0) - parseFloat(d.purchase||0) - parseFloat(d.rehab||0);
     return `<div class="closed-card" onclick="openClosedDetail('${d.id}')">
       <div class="closed-card-img">
-        ${d.photo ? `<img src="${d.photo}" alt="${d.address}">` : '<span>No Photo</span>'}
+        ${d.photo
+          ? `<img src="${d.photo}" alt="${d.address}">`
+          : d.photoKey
+            ? `<img data-deal-photo="${d.id}" src="" alt="${d.address}" style="display:none;"><span id="dp-placeholder-${d.id}">Loading...</span>`
+            : '<span>No Photo</span>'}
       </div>
       <div class="closed-card-body">
         <div class="closed-card-address">${d.address}${d.city?', '+d.city:''}</div>
@@ -4499,6 +4542,7 @@ function renderClosed() {
       </div>
     </div>`;
   }).join('');
+  loadDealCardPhotos(closed);
 }
 
 function openClosedDetail(id) {
@@ -4509,8 +4553,8 @@ function openClosedDetail(id) {
   const profit = parseFloat(d.sale||0) - parseFloat(d.purchase||0) - parseFloat(d.rehab||0);
   document.getElementById('closed-detail-title').textContent = d.address;
   document.getElementById('closed-detail-body').innerHTML = `
-    <div style="width:100%;height:200px;border-radius:6px;overflow:hidden;background:var(--navy-light);margin-bottom:18px;display:flex;align-items:center;justify-content:center;color:var(--text-muted);">
-      ${d.photo ? `<img src="${d.photo}" style="width:100%;height:100%;object-fit:cover;">` : '<span>No photo</span>'}
+    <div id="closed-detail-hero" style="width:100%;height:200px;border-radius:6px;overflow:hidden;background:var(--navy-light);margin-bottom:18px;display:flex;align-items:center;justify-content:center;color:var(--text-muted);">
+      ${d.photo ? `<img src="${d.photo}" style="width:100%;height:100%;object-fit:cover;">` : '<span>Loading...</span>'}
     </div>
     <div class="deal-fields" style="margin-bottom:16px;">
       <div class="deal-field"><div class="deal-field-label">Deal Type</div><div class="deal-field-value">${d.dtype||'—'}</div></div>
@@ -4526,6 +4570,18 @@ function openClosedDetail(id) {
     ${d.notes ? `<div style="background:var(--card-bg);border:1px solid var(--border);border-radius:6px;padding:14px;font-size:0.85rem;color:var(--silver);">${d.notes}</div>` : ''}
   `;
   openModal('modal-closed-detail');
+  // Async load photo if stored separately
+  if(!d.photo && d.photoKey) {
+    fetch('/api/store/nc_' + d.photoKey).then(r=>r.json()).then(r=>{
+      const src = typeof r.value === 'string' ? JSON.parse(r.value) : r.value;
+      const hero = document.getElementById('closed-detail-hero');
+      if(src && hero) hero.innerHTML = `<img src="${src}" style="width:100%;height:100%;object-fit:cover;">`;
+      else if(hero) hero.innerHTML = '<span>No photo</span>';
+    }).catch(()=>{ const h=document.getElementById('closed-detail-hero'); if(h) h.innerHTML='<span>No photo</span>'; });
+  } else if(!d.photo) {
+    const hero = document.getElementById('closed-detail-hero');
+    if(hero) hero.innerHTML = '<span>No photo</span>';
+  }
 }
 
 function deleteClosedDeal() {
