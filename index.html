@@ -7112,8 +7112,8 @@ window.bulkImportNotionExpenses = async function() {
         Math.abs(t.amount - amount) < 1.00 &&
         Math.abs(new Date(t.date) - new Date(date)) < 3*24*60*60*1000
       );
-      // Use IRS category set by user at entry — no auto-mapping
-      const cat = exp.irsCategory || catMap[exp.lineitem] || catMap[exp.category] || catMap[exp.label] || catMap[exp.vendor] || '';
+      // ONLY use what the user explicitly set — no auto-mapping fallback
+      const cat = exp.irsCategory || '';
       const needsReview = !exp.irsCategory;
       return { i, exp, amount, date, cat, isDupe, needsReview };
     });
@@ -7186,7 +7186,8 @@ window.bulkImportNotionExpenses = async function() {
         account_id: accountId,
         deal_id: dealId,
         vendor: p.exp.lineitem||p.exp.category||p.exp.vendor||'Expense',
-        category: p.exp.irsCategory || p.cat || 'Miscellaneous',
+        // Only use explicitly set IRS category — never auto-map
+        category: p.exp.irsCategory || 'Uncategorized',
         amount: p.amount,
         type: 'expense',
         description: `[Dashboard Import] ${p.exp.lineitem||p.exp.category||p.exp.vendor||''}`,
