@@ -3775,9 +3775,11 @@ async function expViewFile(expIdx, fileIdx) {
     try {
       var stored = await fetch('/api/store/nc_' + ref.key).then(r=>r.json());
       if(stored && stored.value) {
-        fileData = stored.value.data;
-        fileName = stored.value.name;
-        fileType = stored.value.type;
+        // value may be a JSON string that needs parsing
+        var val = typeof stored.value === 'string' ? JSON.parse(stored.value) : stored.value;
+        fileData = val.data;
+        fileName = val.name;
+        fileType = val.type;
       }
     } catch(e) { console.error('Failed to load receipt:', e); }
   }
