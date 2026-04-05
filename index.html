@@ -3711,8 +3711,11 @@ function renderDealExpenses(d) {
           '<div style="color:var(--white);">' + (e.desc||'Expense') + '</div>' +
           (e.receipt ? '<div style="font-size:0.72rem;color:var(--text-muted);margin-top:2px;">📎 '+e.receipt+'</div>' : '') +
         (function(){
-          // New format: show receiptRefs as clickable spans
+          // New format: show receiptRefs as clickable spans (or uploading indicator)
           if(e.receiptRefs && e.receiptRefs.length) {
+            if(e._uploading) {
+              return '<div style="margin-top:5px;"><span style="font-size:0.72rem;color:var(--text-muted);">⏳ Uploading receipt...</span></div>';
+            }
             return '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;">' +
               e.receiptRefs.map(function(ref,fi){
                 var icon = (ref.type && ref.type.startsWith('image/')) ? '🖼️' : '📄';
@@ -4114,6 +4117,11 @@ function saveExpense() {
     receiptRefs: receiptRefs,
     files:       []  // file data stored separately via receiptRefs
   });
+  // Mark as uploading if receipts present
+  var newExp = d.expenses[d.expenses.length - 1];
+  if(newExp.receiptRefs && newExp.receiptRefs.length) {
+    newExp._uploading = true;
+  }
   save('active_deals', deals);
   closeModal('modal-add-expense');
   // Reset form
@@ -4125,6 +4133,28 @@ function saveExpense() {
   renderDealExpenses(d);
   renderDashboard();
   toast('Expense added!');
+
+  // Confirm each receipt upload, then re-render with final links
+  if(newExp.receiptRefs && newExp.receiptRefs.length) {
+    var uploadPromises = newExp.receiptRefs.map(function(ref) {
+      return fetch('/api/store/nc_' + ref.key, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ value: _cache['nc_' + ref.key] })
+      }).then(function(r){ return r.ok ? r : Promise.reject('Upload failed'); });
+    });
+    Promise.all(uploadPromises)
+      .then(function() {
+        newExp._uploading = false;
+        var deals2 = load('active_deals', []);
+        var d2 = deals2.find(function(x){ return x.id === currentDealId; });
+        if(d2) renderDealExpenses(d2);
+      })
+      .catch(function() {
+        newExp._uploading = false;
+        toast('Warning: receipt upload may have failed. Try re-adding.');
+      });
+  }
 }
 
 function deleteDealExpense(i) {
