@@ -7122,7 +7122,7 @@ window.bulkImportNotionExpenses = async function() {
     const rows = previewItems.map(p=>`
       <tr style="background:${p.isDupe?'rgba(231,76,60,0.08)':p.needsReview?'rgba(212,175,55,0.08)':'transparent'}">
         <td style="padding:8px 10px;"><input type="checkbox" id="imp-chk-${p.i}" ${p.isDupe?'':'checked'} style="accent-color:var(--gold);"></td>
-        <td style="padding:8px 10px;font-size:0.78rem;color:var(--text);">${p.exp.lineitem||p.exp.category||p.exp.vendor||'Expense'}</td>
+        <td style="padding:8px 10px;font-size:0.78rem;color:var(--text);">${p.exp.desc||p.exp.description||p.exp.category||'Expense'}</td>
         <td style="padding:8px 10px;font-size:0.78rem;color:var(--text);">${p.date}</td>
         <td style="padding:8px 10px;font-size:0.78rem;font-weight:600;color:var(--text);">${p.amount.toFixed(2)}</td>
         <td style="padding:8px 10px;font-size:0.72rem;color:${p.needsReview?'#e74c3c':'var(--text-muted)'};">${p.cat||'—'}</td>
@@ -7185,7 +7185,7 @@ window.bulkImportNotionExpenses = async function() {
         date: p.date,
         account_id: accountId,
         deal_id: dealId,
-        vendor: p.exp.lineitem||p.exp.category||p.exp.vendor||'Expense',
+        vendor: p.exp.desc || p.exp.description || p.exp.lineitem || 'Expense',
         // Only use explicitly set IRS category — never auto-map
         category: p.exp.irsCategory || 'Uncategorized',
         amount: p.amount,
