@@ -3978,6 +3978,13 @@ function editDealExpense(i) {
 }
 
 function saveExpense() {
+  // Guard: must have an open deal
+  if(!currentDealId) {
+    console.error('[saveExpense] No currentDealId set');
+    alert('Error: No deal selected. Please close and reopen the deal.');
+    return;
+  }
+
   // Handle editing an existing expense
   if(window._editingExpenseIdx !== undefined && window._editingExpenseIdx !== null) {
     var idx = window._editingExpenseIdx;
