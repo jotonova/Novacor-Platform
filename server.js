@@ -1079,9 +1079,22 @@ async function sendNovaBooksSummaryEmail(req) {
       html
     ].join('\r\n');
 
+    const today = new Date().toISOString().slice(0, 10);
+    const lastSentR = await db.execute({ sql: "SELECT value FROM kv WHERE key='nb_last_weekly_email'", args: [] });
+    const lastSentDate = lastSentR.rows[0]?.value;
+    if (lastSentDate === today) {
+      console.log('[NovaBooks] Weekly summary email already sent today — skipping duplicate');
+      return;
+    }
+
     const gmail2 = google.gmail({ version: 'v1', auth });
     await gmail2.users.messages.send({ userId: 'me', requestBody: { raw: Buffer.from(rawEmail).toString('base64url') } });
     console.log('[NovaBooks] Weekly summary email sent successfully');
+
+    await db.execute({
+      sql: "INSERT INTO kv (key,value) VALUES ('nb_last_weekly_email',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+      args: [today]
+    });
   } catch (e) {
     console.error('[NovaBooks] Failed to send weekly summary email:', e.message);
   }
@@ -1090,15 +1103,34 @@ async function sendNovaBooksSummaryEmail(req) {
 // ── Cron: Every Monday 8am America/Phoenix (MST = UTC-7) ────────────────────
 function scheduleNovabooksSync() {
   function msUntilNextMonday8am() {
+    // Arizona (MST) is always UTC-7 — no DST
+    const MST_OFFSET_MS = 7 * 60 * 60 * 1000;
     const now = new Date();
-    const mst = new Date(now.toLocaleString('en-US', { timeZone: 'America/Phoenix' }));
-    const day = mst.getDay();
-    const daysUntilMonday = day === 1 ? (mst.getHours() < 8 ? 0 : 7) : (8 - day) % 7;
-    const nextMonday = new Date(mst);
-    nextMonday.setDate(mst.getDate() + daysUntilMonday);
-    nextMonday.setHours(8, 0, 0, 0);
-    const utcNextMonday = new Date(nextMonday.toLocaleString('en-US', { timeZone: 'UTC' }));
-    return utcNextMonday - now;
+    // Express current time as MST by shifting UTC
+    const nowMSTms = now.getTime() - MST_OFFSET_MS;
+    const nowMST = new Date(nowMSTms);
+    const day = nowMST.getUTCDay();   // 0=Sun, 1=Mon
+    const hour = nowMST.getUTCHours();
+
+    // Days until next Monday 8:00am MST
+    let daysUntil;
+    if (day === 1 && hour < 8) {
+      daysUntil = 0; // It's Monday before 8am — fire today
+    } else if (day === 1) {
+      daysUntil = 7; // It's Monday after 8am — next Monday
+    } else {
+      daysUntil = (8 - day) % 7; // 0=Sun→1, 2=Tue→6, etc.
+    }
+
+    // Build target: next Monday 8:00:00 MST expressed as UTC ms
+    const targetMST = new Date(nowMST);
+    targetMST.setUTCDate(targetMST.getUTCDate() + daysUntil);
+    targetMST.setUTCHours(8, 0, 0, 0);
+    const targetUTC = targetMST.getTime() + MST_OFFSET_MS;
+
+    const ms = targetUTC - now.getTime();
+    // Safety net: never fire in less than 60 seconds (guards against clock edge cases)
+    return Math.max(ms, 60 * 1000);
   }
 
   function scheduleNext() {
