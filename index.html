@@ -1254,7 +1254,7 @@ label {
 
 <script>
 (function(){
-  let _view='week',_weekOff=0,_dayOff=0,_cache=[];
+  let _view='week',_weekOff=0,_dayOff=0,_tmCache=[];
   function _mon(off){const n=new Date(),d=n.getDay(),diff=(d===0?-6:1-d),m=new Date(n);m.setDate(n.getDate()+diff+off*7);m.setHours(0,0,0,0);return m;}
   function _fmt(d){return d.toISOString().slice(0,10);}
   function _esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -1276,7 +1276,11 @@ label {
     const mon=_mon(_weekOff),sun=new Date(mon);sun.setDate(mon.getDate()+6);
     const ws=_fmt(mon),we=_fmt(sun);
     document.getElementById('tasksWeekLabel').textContent=mon.toLocaleDateString('en-US',{month:'short',day:'numeric'})+' – '+sun.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
-    try{const r=await fetch(`/api/tasks?week_start=${ws}&week_end=${we}`);_cache=await r.json();}catch(e){_cache=[];}
+    try{
+      const r=await fetch(`/api/tasks?week_start=${ws}&week_end=${we}`);
+      const data=await r.json();
+      _tmCache=Array.isArray(data)?data:[];
+    }catch(e){_tmCache=[];}
     if(_view==='week')_renderWeek();else _renderDay();
   }
 
@@ -1294,7 +1298,7 @@ label {
     let html='';
     for(let i=0;i<7;i++){
       const d=new Date(mon);d.setDate(mon.getDate()+i);
-      const ds=_fmt(d),isToday=ds===today,dayTasks=_cache.filter(t=>t.due_date===ds);
+      const ds=_fmt(d),isToday=ds===today,dayTasks=_tmCache.filter(t=>t.due_date===ds);
       html+=`<div class="tasks-day-col${isToday?' today':''}" onclick="tasksOpenModalForDate('${ds}',event)" style="cursor:pointer;"><div class="tasks-day-label">${days[i]}</div><div class="tasks-day-num">${d.getDate()}</div>${dayTasks.length?dayTasks.map(t=>_card(t,false)).join(''):''}<div style="font-size:0.68rem;color:var(--text-muted);opacity:0.35;padding:6px 0;pointer-events:none;">+ add task</div></div>`;
     }
     document.getElementById('tasksWeekGrid').innerHTML=html;
@@ -1304,7 +1308,7 @@ label {
     const base=new Date();base.setDate(base.getDate()+_dayOff);
     const ds=_fmt(base);
     document.getElementById('tasksDayLabel').textContent=base.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
-    let day=_cache.filter(t=>t.due_date===ds);
+    let day=_tmCache.filter(t=>t.due_date===ds);
     if(!day.length){try{const r=await fetch(`/api/tasks?date=${ds}`);day=await r.json();}catch(e){day=[];}}
     document.getElementById('tasksDayList').innerHTML=day.length?day.map(t=>_card(t,true)).join(''):`<div class="no-tasks">No tasks for this day — click + Add Task to get started.</div>`;
   }
@@ -1314,7 +1318,7 @@ label {
     if(val==='complete'){
       if(!confirm('Mark complete? This task will be permanently removed.'))return;
       await fetch(`/api/tasks/${id}`,{method:'DELETE'});
-      _cache=_cache.filter(t=>t.id!==id);
+      _tmCache=_tmCache.filter(t=>t.id!==id);
       document.getElementById('tc-'+id)?.remove();
       document.getElementById('dtc-'+id)?.remove();
       _load();
@@ -1326,7 +1330,7 @@ label {
   };
 
   window.tasksToCal=async function(id){
-    const t=_cache.find(x=>x.id===id);if(!t||!t.due_time)return;
+    const t=_tmCache.find(x=>x.id===id);if(!t||!t.due_time)return;
     const start=`${t.due_date}T${t.due_time}:00`,ed=new Date(`${t.due_date}T${t.due_time}:00`);
     ed.setHours(ed.getHours()+1);
     const end=ed.toISOString().slice(0,19);
@@ -1371,7 +1375,7 @@ label {
     try{
       const r=await fetch('/api/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,description:desc,due_date:date,due_time:time||null})});
       const task=await r.json();
-      _cache.push(task);
+      _tmCache.push(task);
       if(sendToCal&&time){
         const start=`${date}T${time}:00`,ed=new Date(`${date}T${time}:00`);
         ed.setHours(ed.getHours()+1);
