@@ -1256,7 +1256,8 @@ label {
 (function(){
   let _view='week',_weekOff=0,_dayOff=0,_tmCache=[];
   function _mon(off){const n=new Date(),d=n.getDay(),diff=(d===0?-6:1-d),m=new Date(n);m.setDate(n.getDate()+diff+off*7);m.setHours(0,0,0,0);return m;}
-  function _fmt(d){return d.toISOString().slice(0,10);}
+  // Use local date components — toISOString() converts to UTC which shifts midnight in UTC-7
+  function _fmt(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
   function _esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
   function _time(t){if(!t)return'';const[h,m]=t.split(':').map(Number),ap=h>=12?'PM':'AM',hr=h%12||12;return hr+':'+(m+'').padStart(2,'0')+' '+ap;}
 
