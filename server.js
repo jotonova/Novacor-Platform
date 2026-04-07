@@ -176,20 +176,22 @@ app.options('/api/crm/contacts', (req, res) => {
 
 app.post('/api/generate-letter', async (req, res) => {
   try {
-    const { firstName, address, aiScore, motivationTags } = req.body;
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': (process.env.ANTHROPIC_API_KEY || '').replace(/[\s\n\r]/g, ''),
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        messages: [{
-          role: 'user',
-          content: `Write a warm, personal real estate investor letter.
+    const { firstName, address, aiScore, motivationTags, isAmy } = req.body;
+
+    const prompt = isAmy
+      ? `Write a warm, professional real estate letter from Amy Casanova, a local REALTOR® with Keller Williams Arizona Living Realty in Kingman AZ.
+
+Property: ${address}
+Owner First Name: ${firstName}
+
+- Start with "Dear ${firstName},"
+- Introduce Amy as a local Realtor who knows the Kingman market
+- Mention the property address naturally
+- Offer a free no-obligation home valuation
+- Keep it 3-4 short paragraphs, professional but warm
+- End naturally before the signature block
+- Do NOT include any signature, sign-off, or contact information`
+      : `Write a warm, personal real estate investor letter.
 
 Property: ${address}
 Owner First Name: ${firstName}
@@ -201,14 +203,20 @@ From: Justin Casanova, local real estate investor, Kingman AZ, Novacor LLC.
 - Mention the property address naturally
 - 3-4 short paragraphs, conversational tone
 - No pressure, just open a conversation about potentially selling
+- End naturally before the signature block
+- Do NOT include any signature, sign-off, closing, or contact information`;
 
-Write ONLY the body paragraphs of the letter — starting with "Dear ${firstName},"
-and ending after the last body paragraph.
-Do NOT include any signature, sign-off, closing, or contact information.
-The template will add those automatically.
-Do NOT write "Sincerely", "Best regards", "Justin Casanova", phone numbers,
-or any other closing content.`
-        }]
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': (process.env.ANTHROPIC_API_KEY || '').replace(/[\s\n\r]/g, ''),
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
       })
     });
     const data = await response.json();

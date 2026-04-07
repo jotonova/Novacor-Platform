@@ -5438,7 +5438,6 @@ window.crmRegenerateLetters = async function() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ firstName, address, aiScore, motivationTags })
     });
-
     const data = await response.json();
     const letterText = data.letter || '';
     if(!letterText) throw new Error('No letter generated');
@@ -5449,11 +5448,24 @@ window.crmRegenerateLetters = async function() {
       save('crm_contacts', contacts);
     }
 
+    // Generate Amy letter too
+    const amyResponse = await fetch('/api/generate-letter', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ firstName, address, aiScore, motivationTags, isAmy: true })
+    });
+    const amyData = await amyResponse.json();
+    if(amyData.letter && idx > -1) {
+      contacts[idx].amy_letter = amyData.letter;
+      save('crm_contacts', contacts);
+    }
+
     lettersContainer.innerHTML = `
       <button onclick="crmViewLetter('novacor')" style="padding:7px 14px;background:transparent;border:1px solid var(--gold);border-radius:4px;color:var(--gold);font-size:0.75rem;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;font-weight:600;">📄 Novacor Letter</button>
+      <button onclick="crmViewLetter('amy')" style="padding:7px 14px;background:transparent;border:1px solid var(--gold);border-radius:4px;color:var(--gold);font-size:0.75rem;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;font-weight:600;margin-left:8px;">📄 Amy Letter</button>
       <button onclick="crmRegenerateLetters()" style="padding:7px 14px;background:transparent;border:1px solid rgba(201,168,76,0.4);border-radius:4px;color:var(--text-muted);font-size:0.75rem;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;font-weight:600;margin-left:8px;">🔄 Regenerate</button>
-      <span style="font-size:0.72rem;color:#2ecc71;margin-left:8px;">✅ Generated!</span>`;
-    toast('✅ Letter generated and saved!');
+      <span style="font-size:0.72rem;color:#2ecc71;margin-left:8px;">✅ Saved!</span>`;
+    toast('✅ Both letters generated and saved!');
 
   } catch(e) {
     lettersContainer.innerHTML = `<span style="font-size:0.78rem;color:#e74c3c;">Error generating letter. Try again.</span>
