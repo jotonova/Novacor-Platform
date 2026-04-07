@@ -5343,35 +5343,14 @@ window.crmRegenerateLetters = async function() {
   const aiScore = c.ai_score || '';
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch('/api/generate-letter', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        messages: [{
-          role: 'user',
-          content: `Generate a personalized real estate investor letter for this property owner.
-
-Property: ${address}
-Owner First Name: ${firstName}
-AI Motivation Score: ${aiScore}/100
-Motivation Signals: ${motivationTags || 'tax delinquent'}
-
-Write a warm, personal letter from Justin Casanova (local real estate investor, Kingman AZ).
-- Start with "Dear ${firstName},"
-- Mention the property address naturally
-- Keep it 3-4 short paragraphs
-- No pressure, just open a conversation
-- End with Justin's name and Novacor LLC
-
-Return ONLY the letter text, no subject line, no extra formatting.`
-        }]
-      })
+      body: JSON.stringify({ firstName, address, aiScore, motivationTags })
     });
 
     const data = await response.json();
-    const letterText = data.content?.[0]?.text || '';
+    const letterText = data.letter || '';
     if(!letterText) throw new Error('No letter generated');
 
     const idx = contacts.findIndex(x=>x.id===window._crmModalContactId);

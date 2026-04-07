@@ -174,6 +174,49 @@ app.options('/api/crm/contacts', (req, res) => {
   res.sendStatus(204);
 });
 
+app.post('/api/generate-letter', async (req, res) => {
+  try {
+    const { firstName, address, aiScore, motivationTags } = req.body;
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{
+          role: 'user',
+          content: `Write a warm, personal real estate investor letter.
+
+Property: ${address}
+Owner First Name: ${firstName}
+AI Motivation Score: ${aiScore}/100
+Motivation Signals: ${motivationTags || 'tax delinquent'}
+
+From: Justin Casanova, local real estate investor, Kingman AZ, Novacor LLC.
+- Start with "Dear ${firstName},"
+- Mention the property address naturally
+- 3-4 short paragraphs, conversational tone
+- No pressure, just open a conversation about potentially selling
+- Sign off with Justin Casanova, Novacor LLC, Kingman AZ
+
+Return ONLY the letter text. No subject line, no extra formatting.`
+        }]
+      })
+    });
+    const data = await response.json();
+    const letter = data.content?.[0]?.text || '';
+    if(!letter) return res.status(500).json({ error: 'No letter generated' });
+    res.json({ letter });
+  } catch(e) {
+    console.error('[GenerateLetter]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/api/crm/contacts', async (req, res) => {
   setCrmCors(res);
 
