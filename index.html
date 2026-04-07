@@ -5288,15 +5288,15 @@ window.openCrmContactModal = function(contactId) {
           }
           html += `<button onclick="crmRegenerateLetters()" style="padding:7px 14px;background:transparent;border:1px solid rgba(201,168,76,0.4);border-radius:4px;color:var(--text-muted);font-size:0.75rem;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;font-weight:600;margin-left:8px;">🔄 Regenerate</button>`;
           if(!lead?.novacor_letter && !lead?.amy_letter) {
-            html = `<span style="font-size:0.78rem;color:var(--text-muted);">No letters found — </span>` + html;
+            html = `<button onclick="crmRegenerateLetters()" style="padding:8px 18px;background:rgba(201,168,76,0.1);border:1px solid var(--gold);border-radius:4px;color:var(--gold);font-size:0.75rem;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;font-weight:700;">✍️ Generate New Letter</button>`;
           }
           lettersContainer.innerHTML = html;
         })
         .catch(()=>{
-          lettersContainer.innerHTML = `<span style="font-size:0.78rem;color:var(--text-muted);">Could not load — </span><button onclick="crmRegenerateLetters()" style="padding:7px 14px;background:transparent;border:1px solid rgba(201,168,76,0.4);border-radius:4px;color:var(--text-muted);font-size:0.75rem;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;">🔄 Regenerate</button>`;
+          lettersContainer.innerHTML = `<button onclick="crmRegenerateLetters()" style="padding:8px 18px;background:rgba(201,168,76,0.1);border:1px solid var(--gold);border-radius:4px;color:var(--gold);font-size:0.75rem;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;font-weight:700;">✍️ Generate New Letter</button>`;
         });
     } else {
-      lettersContainer.innerHTML = `<button onclick="crmRegenerateLetters()" style="padding:7px 14px;background:transparent;border:1px solid rgba(201,168,76,0.4);border-radius:4px;color:var(--text-muted);font-size:0.75rem;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;font-weight:600;">🔄 Generate Letters</button>`;
+      lettersContainer.innerHTML = `<button onclick="crmRegenerateLetters()" style="padding:8px 18px;background:rgba(201,168,76,0.1);border:1px solid var(--gold);border-radius:4px;color:var(--gold);font-size:0.75rem;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;font-weight:700;">✍️ Generate New Letter</button>`;
     }
   }
 
