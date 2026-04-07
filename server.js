@@ -181,7 +181,7 @@ app.post('/api/generate-letter', async (req, res) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'x-api-key': (process.env.ANTHROPIC_API_KEY || '').replace(/[\s\n\r]/g, ''),
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
