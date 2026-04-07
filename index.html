@@ -2938,6 +2938,25 @@ label {
       <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:8px;font-weight:600;">Your Notes</div>
       <textarea id="crm-modal-notes" placeholder="Add notes about this contact..." onblur="saveCrmContactNotes()" style="width:100%;min-height:80px;padding:10px 12px;background:var(--input-bg,#0d1e35);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.82rem;resize:vertical;font-family:inherit;box-sizing:border-box;"></textarea>
     </div>
+    <!-- Letters Section -->
+    <div id="crm-modal-letters-section" style="padding:14px 24px;border-bottom:1px solid var(--border);display:none;">
+      <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:8px;font-weight:600;">Generated Letters</div>
+      <div id="crm-modal-letters" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+    </div>
+    <!-- Envelope Section -->
+    <div id="crm-modal-envelope-section" style="padding:14px 24px;border-bottom:1px solid var(--border);display:none;">
+      <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:10px;font-weight:600;">✉️ Envelope Mailing Address</div>
+      <div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:10px;">Return: Attn: Amy Casanova · 2800 Hualapai Mountain Rd · Kingman AZ 86401</div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;">
+        <input id="crm-env-street" type="text" placeholder="Street address" style="width:100%;padding:7px 10px;background:var(--input-bg,#0d1e35);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.8rem;"/>
+        <div style="display:flex;gap:6px;">
+          <input id="crm-env-city" type="text" placeholder="City" style="flex:2;padding:7px 10px;background:var(--input-bg,#0d1e35);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.8rem;"/>
+          <input id="crm-env-state" type="text" placeholder="ST" maxlength="2" style="flex:1;padding:7px 8px;text-align:center;background:var(--input-bg,#0d1e35);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.8rem;"/>
+          <input id="crm-env-zip" type="text" placeholder="ZIP" maxlength="5" style="flex:1;padding:7px 8px;text-align:center;background:var(--input-bg,#0d1e35);border:1px solid rgba(201,168,76,0.5);border-radius:4px;color:var(--text);font-size:0.8rem;font-weight:600;"/>
+        </div>
+      </div>
+      <button onclick="crmPrintEnvelope()" style="padding:8px 18px;background:transparent;border:1px solid var(--gold);border-radius:4px;color:var(--gold);font-size:0.75rem;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;font-weight:700;">✉️ Print Envelope</button>
+    </div>
     <!-- Footer -->
     <div style="padding:14px 24px;display:flex;justify-content:space-between;align-items:center;background:rgba(255,255,255,0.02);border-radius:0 0 12px 12px;">
       <button onclick="deleteCrmContact(window._crmModalContactId)" style="padding:7px 14px;background:transparent;border:1px solid rgba(231,76,60,0.4);border-radius:4px;color:#e74c3c;font-size:0.72rem;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;">🗑️ Remove Contact</button>
@@ -5217,7 +5236,107 @@ window.openCrmContactModal = function(contactId) {
   document.getElementById('crm-modal-ai-notes').textContent = c.notes||'No AI analysis available.';
   document.getElementById('crm-modal-notes').value = c.personalNotes||'';
 
+  // Fetch full lead data from Conversion Lab if source is conversion_lab
+  const lettersSection = document.getElementById('crm-modal-letters-section');
+  const lettersContainer = document.getElementById('crm-modal-letters');
+  const envelopeSection = document.getElementById('crm-modal-envelope-section');
+
+  if(lettersSection) lettersSection.style.display = 'none';
+  if(envelopeSection) envelopeSection.style.display = 'none';
+  window._crmModalLead = null;
+
+  if(c.source === 'conversion_lab' && lettersSection) {
+    lettersSection.style.display = 'block';
+    lettersContainer.innerHTML = '<span style="font-size:0.78rem;color:var(--text-muted);">Loading...</span>';
+
+    const CLAB_URL = 'https://novacor-conversion-lab.onrender.com';
+    fetch(`${CLAB_URL}/api/leads?limit=50`)
+      .then(r=>r.json())
+      .then(data=>{
+        const lead = data.leads?.find(l=>
+          l.address && c.address &&
+          l.address.toLowerCase().trim() === c.address.split(',')[0].toLowerCase().trim()
+        );
+        if(!lead) {
+          lettersContainer.innerHTML = '<span style="font-size:0.78rem;color:var(--text-muted);">No letter data found</span>';
+          return;
+        }
+        window._crmModalLead = lead;
+        let html = '';
+        if(lead.novacor_letter) {
+          html += `<button onclick="crmViewLetter('novacor')" style="padding:7px 14px;background:transparent;border:1px solid var(--gold);border-radius:4px;color:var(--gold);font-size:0.75rem;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;font-weight:600;">📄 View Novacor Letter</button>`;
+        }
+        if(lead.amy_letter) {
+          html += `<button onclick="crmViewLetter('amy')" style="padding:7px 14px;background:transparent;border:1px solid var(--gold);border-radius:4px;color:var(--gold);font-size:0.75rem;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;font-weight:600;margin-left:8px;">📄 View Amy Letter</button>`;
+        }
+        if(!lead.novacor_letter && !lead.amy_letter) {
+          html = '<span style="font-size:0.78rem;color:var(--text-muted);">No letters generated yet</span>';
+        }
+        lettersContainer.innerHTML = html;
+        if(envelopeSection) {
+          envelopeSection.style.display = 'block';
+          document.getElementById('crm-env-street').value = lead.owner_mailing_address || lead.address || '';
+          document.getElementById('crm-env-city').value = lead.owner_mailing_city || lead.city || '';
+          document.getElementById('crm-env-state').value = lead.owner_mailing_state || lead.state || 'AZ';
+          document.getElementById('crm-env-zip').value = lead.owner_mailing_zip || '';
+        }
+      })
+      .catch(()=>{
+        lettersContainer.innerHTML = '<span style="font-size:0.78rem;color:#e74c3c;">Could not load letter data</span>';
+      });
+  }
+
   document.getElementById('modal-crm-contact').classList.remove('hidden');
+};
+
+window.crmViewLetter = function(type) {
+  const lead = window._crmModalLead;
+  if(!lead) return;
+  const letter = type === 'novacor' ? lead.novacor_letter : lead.amy_letter;
+  if(!letter) return;
+  const w = window.open('', '_blank');
+  w.document.write(`<!DOCTYPE html><html><head><title>Letter — ${lead.address}</title>
+  <style>body{font-family:Georgia,serif;max-width:700px;margin:40px auto;padding:40px;color:#222;line-height:1.8;font-size:15px;}@media print{body{margin:0;padding:30px;}}</style>
+  </head><body>
+  <div style="margin-bottom:32px;font-size:12px;color:#999;">${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
+  ${letter.replace(/\n/g,'<br>')}
+  </body></html>`);
+  w.document.close();
+};
+
+window.crmPrintEnvelope = function() {
+  const contacts = load('crm_contacts', []);
+  const c = contacts.find(x=>x.id===window._crmModalContactId);
+  if(!c) return;
+  const RETURN_ADDRESS = ['Attn: Amy Casanova', '2800 Hualapai Mountain Rd', 'Kingman AZ, 86401'];
+  const street = document.getElementById('crm-env-street')?.value || c.address || '';
+  const city = document.getElementById('crm-env-city')?.value || '';
+  const state = document.getElementById('crm-env-state')?.value || 'AZ';
+  const zip = document.getElementById('crm-env-zip')?.value || '';
+  const cityLine = [city, state, zip].filter(Boolean).join(' ');
+  const parts = (c.name||'').trim().split(/\s+/);
+  const displayName = parts.length > 1
+    ? parts[1].charAt(0).toUpperCase()+parts[1].slice(1).toLowerCase()+' '+parts[0].charAt(0).toUpperCase()+parts[0].slice(1).toLowerCase()
+    : c.name;
+  const w = window.open('', '_blank');
+  w.document.write(`<!DOCTYPE html><html><head><title>Envelope</title><style>
+    *{margin:0;padding:0;box-sizing:border-box;}body{font-family:Arial,sans-serif;background:white;}
+    .envelope-page{width:9.5in;height:4.125in;position:relative;background:white;}
+    .return-address{position:absolute;top:0.35in;left:0.35in;font-size:10pt;line-height:1.6;color:#333;}
+    .delivery-address{position:absolute;top:50%;left:50%;transform:translate(-10%,-50%);font-size:12pt;line-height:1.7;color:#000;}
+    .delivery-name{font-weight:bold;font-size:13pt;margin-bottom:3pt;}
+    @media print{body{margin:0;}.envelope-page{border:none;margin:0;}@page{size:9.5in 4.125in landscape;margin:0;}}
+  </style></head><body>
+  <div class="envelope-page">
+    <div class="return-address">${RETURN_ADDRESS.map(l=>`<div>${l}</div>`).join('')}</div>
+    <div class="delivery-address">
+      <div class="delivery-name">${displayName}</div>
+      <div>${street}</div>
+      <div>${cityLine}</div>
+    </div>
+  </div></body></html>`);
+  w.document.close();
+  setTimeout(()=>w.print(), 500);
 };
 
 window.setCrmContactType = function(newType) {
