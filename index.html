@@ -2880,6 +2880,72 @@ label {
 </div>
 </div>
 
+<!-- CRM Contact Detail -->
+<div id="modal-crm-contact" class="modal-overlay hidden" style="z-index:1000;">
+  <div class="modal-content" style="max-width:680px;width:90%;max-height:88vh;overflow-y:auto;padding:0;border-radius:12px;position:relative;">
+    <!-- Header -->
+    <div style="background:var(--navy-mid,#0d1e35);padding:20px 24px 16px;border-bottom:1px solid var(--border);border-radius:12px 12px 0 0;display:flex;justify-content:space-between;align-items:flex-start;">
+      <div>
+        <div id="crm-modal-name" style="font-family:'Barlow Condensed',sans-serif;font-size:1.5rem;font-weight:700;color:var(--text);letter-spacing:0.03em;"></div>
+        <div id="crm-modal-address" style="font-size:0.82rem;color:var(--text-muted);margin-top:4px;"></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span id="crm-modal-score" style="background:var(--gold);color:#000;font-weight:700;font-size:0.85rem;padding:4px 10px;border-radius:12px;display:none;"></span>
+        <button onclick="closeModal('modal-crm-contact')" style="background:transparent;border:none;color:var(--text-muted);font-size:1.3rem;cursor:pointer;padding:0 4px;">✕</button>
+      </div>
+    </div>
+    <!-- Type Switcher -->
+    <div style="padding:16px 24px;border-bottom:1px solid var(--border);background:rgba(255,255,255,0.02);">
+      <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted);margin-bottom:8px;font-weight:600;">Contact Type</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;" id="crm-type-switcher">
+        <button onclick="setCrmContactType('lead')" id="crm-type-btn-lead" style="padding:6px 16px;border-radius:20px;font-size:0.75rem;font-weight:400;letter-spacing:0.05em;text-transform:uppercase;cursor:pointer;border:1px solid #c9a84c;background:transparent;color:var(--text-muted);transition:all 0.2s;">Lead</button>
+        <button onclick="setCrmContactType('seller')" id="crm-type-btn-seller" style="padding:6px 16px;border-radius:20px;font-size:0.75rem;font-weight:400;letter-spacing:0.05em;text-transform:uppercase;cursor:pointer;border:1px solid #2ecc71;background:transparent;color:var(--text-muted);transition:all 0.2s;">Seller</button>
+        <button onclick="setCrmContactType('buyer')" id="crm-type-btn-buyer" style="padding:6px 16px;border-radius:20px;font-size:0.75rem;font-weight:400;letter-spacing:0.05em;text-transform:uppercase;cursor:pointer;border:1px solid #3498db;background:transparent;color:var(--text-muted);transition:all 0.2s;">Buyer</button>
+        <button onclick="setCrmContactType('partner')" id="crm-type-btn-partner" style="padding:6px 16px;border-radius:20px;font-size:0.75rem;font-weight:400;letter-spacing:0.05em;text-transform:uppercase;cursor:pointer;border:1px solid #9b59b6;background:transparent;color:var(--text-muted);transition:all 0.2s;">Partner</button>
+      </div>
+    </div>
+    <!-- Contact Info -->
+    <div style="padding:16px 24px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div>
+        <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:4px;">Phone</div>
+        <div id="crm-modal-phone" style="font-size:0.85rem;color:var(--text);"></div>
+      </div>
+      <div>
+        <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:4px;">Email</div>
+        <div id="crm-modal-email" style="font-size:0.85rem;color:var(--text);"></div>
+      </div>
+      <div>
+        <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:4px;">Source</div>
+        <div id="crm-modal-source" style="font-size:0.85rem;color:var(--text);"></div>
+      </div>
+      <div>
+        <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:4px;">Added</div>
+        <div id="crm-modal-added" style="font-size:0.85rem;color:var(--text);"></div>
+      </div>
+    </div>
+    <!-- Motivation Tags -->
+    <div id="crm-modal-tags-section" style="padding:14px 24px;border-bottom:1px solid var(--border);">
+      <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:8px;font-weight:600;">Motivation Signals</div>
+      <div id="crm-modal-tags" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+    </div>
+    <!-- AI Notes -->
+    <div style="padding:14px 24px;border-bottom:1px solid var(--border);">
+      <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:8px;font-weight:600;">AI Analysis</div>
+      <div id="crm-modal-ai-notes" style="font-size:0.82rem;color:var(--text-muted);line-height:1.6;font-style:italic;"></div>
+    </div>
+    <!-- Personal Notes -->
+    <div style="padding:14px 24px;border-bottom:1px solid var(--border);">
+      <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:8px;font-weight:600;">Your Notes</div>
+      <textarea id="crm-modal-notes" placeholder="Add notes about this contact..." onblur="saveCrmContactNotes()" style="width:100%;min-height:80px;padding:10px 12px;background:var(--input-bg,#0d1e35);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.82rem;resize:vertical;font-family:inherit;box-sizing:border-box;"></textarea>
+    </div>
+    <!-- Footer -->
+    <div style="padding:14px 24px;display:flex;justify-content:space-between;align-items:center;background:rgba(255,255,255,0.02);border-radius:0 0 12px 12px;">
+      <button onclick="deleteCrmContact(window._crmModalContactId)" style="padding:7px 14px;background:transparent;border:1px solid rgba(231,76,60,0.4);border-radius:4px;color:#e74c3c;font-size:0.72rem;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;">🗑️ Remove Contact</button>
+      <button onclick="closeModal('modal-crm-contact')" style="padding:7px 16px;background:var(--gold);border:none;border-radius:4px;color:#000;font-size:0.72rem;font-weight:700;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;">Done</button>
+    </div>
+  </div>
+</div>
+
 <!-- New Sign -->
 <div class="modal-overlay hidden" id="modal-new-sign">
 <div class="modal" style="max-width:500px;">
@@ -5038,44 +5104,60 @@ function crmNoteBlock(c) {
     </div>`;
 }
 
-function crmLeadCard(c) {
-  const score = Number(c.ai_score) || 0;
-  const scoreClass = score >= 70 ? 'crm-score-hot' : score >= 40 ? 'crm-score-warm' : 'crm-score-cold';
-  let tags = [];
-  try { tags = JSON.parse(c.motivation_tags || '[]'); } catch {}
-  const tagClass = t => {
-    if(t.includes('foreclosure')) return 'crm-tag crm-tag-foreclosure';
-    if(t.includes('delinquent'))  return 'crm-tag crm-tag-delinquent';
-    if(t.includes('vacant'))      return 'crm-tag crm-tag-vacant';
-    if(t.includes('absentee'))    return 'crm-tag crm-tag-absentee';
-    if(t.includes('equity'))      return 'crm-tag crm-tag-equity';
-    return 'crm-tag';
-  };
-  const fmt$ = v => v ? '$' + Number(v).toLocaleString() : '—';
-  const fmtPct = v => v != null ? Number(v).toFixed(1) + '%' : '—';
-  return `
-    <div class="crm-card crm-card-lead">
-      <div class="crm-card-header">
-        <div style="flex:1;min-width:0;">
-          <div class="crm-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.name}</div>
-          <div class="crm-detail" style="margin-top:3px;">📍 ${c.address||'—'}</div>
-        </div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;margin-left:10px;">
-          <div class="crm-score-badge ${scoreClass}">${score||'—'}</div>
-          <button class="btn btn-sm btn-ghost" onclick="deleteCRMContact('${c.id}')" style="padding:2px 7px;font-size:0.65rem;">✕</button>
-        </div>
+// ── CRM helpers ──────────────────────────────────────────────────────────────
+function formatCrmName(name) {
+  if(!name) return 'Unknown';
+  const parts = name.trim().split(/\s+/);
+  if(parts.length >= 2) {
+    const last = parts[0].charAt(0).toUpperCase() + parts[0].slice(1).toLowerCase();
+    const first = parts[1].charAt(0).toUpperCase() + parts[1].slice(1).toLowerCase();
+    const rest = parts.slice(2).map(p=>p.charAt(0).toUpperCase()+p.slice(1).toLowerCase()).join(' ');
+    return [first, last, rest].filter(Boolean).join(' ');
+  }
+  return parts[0].charAt(0).toUpperCase() + parts[0].slice(1).toLowerCase();
+}
+
+function getCrmTypeBg(type) {
+  const map = { seller:'rgba(46,204,113,0.15)', buyer:'rgba(52,152,219,0.15)',
+    partner:'rgba(155,89,182,0.15)', lead:'rgba(201,168,76,0.12)' };
+  return map[(type||'').toLowerCase()] || map.lead;
+}
+
+function getCrmTypeColor(type) {
+  const map = { seller:'#2ecc71', buyer:'#3498db', partner:'#9b59b6', lead:'#c9a84c' };
+  return map[(type||'').toLowerCase()] || map.lead;
+}
+
+function crmCompactCard(c) {
+  return `<div class="crm-card" onclick="openCrmContactModal('${c.id}')" style="
+    background:var(--card-bg);border:1px solid var(--border);border-radius:8px;
+    padding:14px 16px;cursor:pointer;transition:border-color 0.2s,box-shadow 0.2s;
+    min-width:220px;max-width:280px;position:relative;"
+    onmouseover="this.style.borderColor='var(--gold)';this.style.boxShadow='0 4px 16px rgba(201,168,76,0.15)'"
+    onmouseout="this.style.borderColor='var(--border)';this.style.boxShadow='none'">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.95rem;font-weight:700;
+        color:var(--text);letter-spacing:0.02em;line-height:1.2;flex:1;margin-right:8px;">
+        ${formatCrmName(c.name)}
       </div>
-      <div class="crm-lead-stats">
-        <div class="crm-lead-stat"><div class="crm-lead-stat-val">${fmt$(c.value)}</div><div class="crm-lead-stat-lbl">Est. Value</div></div>
-        <div class="crm-lead-stat"><div class="crm-lead-stat-val">${fmtPct(c.equity)}</div><div class="crm-lead-stat-lbl">Equity</div></div>
-        <div class="crm-lead-stat"><div class="crm-lead-stat-val" style="font-size:0.72rem;color:var(--silver);">${c.source||'—'}</div><div class="crm-lead-stat-lbl">Source</div></div>
-      </div>
-      ${c.phone ? `<div class="crm-detail">📞 <a href="tel:${c.phone}" class="phone-link">${c.phone}</a></div>` : ''}
-      ${c.email ? `<div class="crm-detail">✉️ <a href="mailto:${c.email}" class="phone-link">${c.email}</a></div>` : ''}
-      ${tags.length ? `<div style="margin:8px 0 4px;">${tags.map(t=>`<span class="${tagClass(t)}">${t.replace(/_/g,' ')}</span>`).join('')}</div>` : ''}
-      ${crmNoteBlock(c)}
-      <div style="font-size:0.68rem;color:var(--text-muted);margin-top:8px;">Added ${c.added||'—'}</div>
-    </div>`;
+      ${c.ai_score ? `<span style="background:var(--gold);color:#000;font-weight:700;font-size:0.72rem;padding:2px 7px;border-radius:10px;white-space:nowrap;">${c.ai_score}</span>` : ''}
+    </div>
+    <div style="margin-bottom:8px;">
+      <span style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.08em;padding:2px 8px;
+        border-radius:10px;font-weight:600;background:${getCrmTypeBg(c.type)};color:${getCrmTypeColor(c.type)};">
+        ${c.type||'lead'}
+      </span>
+    </div>
+    <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+      📍 ${c.address||'No address'}
+    </div>
+    <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:5px;">
+      📞 ${c.phone||'—'}
+    </div>
+    <div style="font-size:0.78rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+      ✉️ ${c.email||'—'}
+    </div>
+  </div>`;
 }
 
 function renderCRM() {
@@ -5084,28 +5166,7 @@ function renderCRM() {
   const grid = document.getElementById('crm-grid');
   if(!grid) return;
   if(!contacts.length) { grid.innerHTML='<div style="color:var(--text-muted);">No contacts yet. Add your first!</div>'; return; }
-  const typeBadge={Seller:'badge-invested',Buyer:'badge-active',Partner:'badge-closed',Lead:'badge-pending',Agent:'badge-active'};
-  grid.innerHTML = contacts.map(c => {
-    if(c.type === 'lead' || c.type === 'Lead') return crmLeadCard(c);
-    return `
-    <div class="crm-card">
-      <div class="crm-card-header">
-        <div>
-          <div class="crm-name">${c.name}</div>
-          <span class="badge ${typeBadge[c.type]||'badge-active'}" style="margin-top:4px;">● ${c.type}</span>
-        </div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
-          <span style="font-size:0.68rem;color:var(--text-muted);">${c.status||''}</span>
-          <button class="btn btn-sm btn-ghost" onclick="deleteCRMContact('${c.id}')" style="padding:2px 7px;font-size:0.65rem;">✕</button>
-        </div>
-      </div>
-      ${c.phone ? `<div class="crm-detail">📞 <a href="tel:${c.phone}" class="phone-link">${c.phone}</a></div>` : ''}
-      ${c.email ? `<div class="crm-detail">✉️ <a href="mailto:${c.email}" class="phone-link">${c.email}</a></div>` : ''}
-      ${c.address ? `<div class="crm-detail">📍 ${c.address}</div>` : ''}
-      ${crmNoteBlock(c)}
-      <div style="font-size:0.68rem;color:var(--text-muted);margin-top:8px;">Added ${c.added||'—'}</div>
-    </div>`;
-  }).join('');
+  grid.innerHTML = contacts.map(c => crmCompactCard(c)).join('');
 }
 
 function deleteCRMContact(id) {
@@ -5113,6 +5174,88 @@ function deleteCRMContact(id) {
   save('crm_contacts',contacts);
   renderCRM();
 }
+
+// ── CRM Contact Detail Modal ──────────────────────────────────────────────────
+window._crmModalContactId = null;
+
+window.openCrmContactModal = function(contactId) {
+  const contacts = load('crm_contacts', []);
+  const c = contacts.find(x=>x.id===contactId);
+  if(!c) return;
+  window._crmModalContactId = contactId;
+
+  document.getElementById('crm-modal-name').textContent = formatCrmName(c.name);
+  document.getElementById('crm-modal-address').textContent = c.address||'No address on file';
+  const scoreEl = document.getElementById('crm-modal-score');
+  scoreEl.textContent = c.ai_score ? `AI: ${c.ai_score}` : '';
+  scoreEl.style.display = c.ai_score ? 'inline' : 'none';
+
+  document.getElementById('crm-modal-phone').textContent = c.phone||'—';
+  document.getElementById('crm-modal-email').textContent = c.email||'—';
+  document.getElementById('crm-modal-source').textContent = c.source==='conversion_lab' ? '🤖 Conversion Lab' : c.source||'Manual';
+  document.getElementById('crm-modal-added').textContent = c.added ? new Date(c.added).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+
+  ['lead','seller','buyer','partner'].forEach(t=>{
+    const btn = document.getElementById(`crm-type-btn-${t}`);
+    if(btn) {
+      const isActive = (c.type||'lead').toLowerCase() === t;
+      btn.style.background = isActive ? getCrmTypeBg(t) : 'transparent';
+      btn.style.color = isActive ? getCrmTypeColor(t) : 'var(--text-muted)';
+      btn.style.fontWeight = isActive ? '700' : '400';
+    }
+  });
+
+  const tagsEl = document.getElementById('crm-modal-tags');
+  let tags = [];
+  try { tags = JSON.parse(c.motivation_tags||'[]'); } catch(e) {}
+  tagsEl.innerHTML = tags.length ? tags.map(t=>`
+    <span style="font-size:0.7rem;padding:2px 8px;border-radius:10px;
+      background:rgba(201,168,76,0.1);color:var(--gold);border:1px solid rgba(201,168,76,0.2);">
+      ${t.replace(/_/g,' ')}
+    </span>`).join('') : '<span style="font-size:0.78rem;color:var(--text-muted);">None detected</span>';
+
+  document.getElementById('crm-modal-ai-notes').textContent = c.notes||'No AI analysis available.';
+  document.getElementById('crm-modal-notes').value = c.personalNotes||'';
+
+  document.getElementById('modal-crm-contact').classList.remove('hidden');
+};
+
+window.setCrmContactType = function(newType) {
+  const contacts = load('crm_contacts', []);
+  const idx = contacts.findIndex(x=>x.id===window._crmModalContactId);
+  if(idx === -1) return;
+  contacts[idx].type = newType;
+  save('crm_contacts', contacts);
+  ['lead','seller','buyer','partner'].forEach(t=>{
+    const btn = document.getElementById(`crm-type-btn-${t}`);
+    if(btn) {
+      const isActive = t === newType;
+      btn.style.background = isActive ? getCrmTypeBg(t) : 'transparent';
+      btn.style.color = isActive ? getCrmTypeColor(t) : 'var(--text-muted)';
+      btn.style.fontWeight = isActive ? '700' : '400';
+    }
+  });
+  renderCRM();
+  toast(`Contact type updated to ${newType}`);
+};
+
+window.saveCrmContactNotes = function() {
+  const contacts = load('crm_contacts', []);
+  const idx = contacts.findIndex(x=>x.id===window._crmModalContactId);
+  if(idx === -1) return;
+  contacts[idx].personalNotes = document.getElementById('crm-modal-notes').value;
+  save('crm_contacts', contacts);
+};
+
+window.deleteCrmContact = function(contactId) {
+  if(!confirm('Remove this contact from the CRM?')) return;
+  const contacts = load('crm_contacts', []);
+  const updated = contacts.filter(x=>x.id!==contactId);
+  save('crm_contacts', updated);
+  closeModal('modal-crm-contact');
+  renderCRM();
+  toast('Contact removed');
+};
 
 // CRM note toggle/save — event delegation (no inline onclick needed)
 document.addEventListener('click', function(e) {
