@@ -5311,16 +5311,109 @@ window.crmViewLetter = function(type) {
     ? (c?.novacor_letter || lead?.novacor_letter)
     : (c?.amy_letter || lead?.amy_letter);
   if(!letter) return toast('Letter not available');
+
   const address = c?.address || lead?.address || '';
+  const ownerName = c?.name || lead?.owner_name || '';
+  const formattedName = ownerName.trim().split(/\s+/)
+    .map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' ');
+  const today = new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
+  const mailingStreet = c?.owner_mailing_address || address.split(',')[0]?.trim() || '';
+  const mailingCity = c?.owner_mailing_city || '';
+  const mailingState = c?.owner_mailing_state || 'AZ';
+  const mailingZip = c?.owner_mailing_zip || '';
+  const cityLine = [mailingCity, mailingState, mailingZip].filter(Boolean).join(', ');
+
+  const bodyHtml = letter
+    .split(/\n\n+/)
+    .map(p => `<p>${p.replace(/\n/g,'<br>')}</p>`)
+    .join('');
+
+  let html = '';
+
+  if(type === 'novacor') {
+    html = `<!DOCTYPE html><html><head>
+    <title>Novacor Letter</title>
+    <style>
+      *{margin:0;padding:0;box-sizing:border-box;}
+      body{font-family:Arial,sans-serif;font-size:13px;color:#222;
+        padding:60px 72px;max-width:850px;margin:0 auto;line-height:1.7;}
+      .header{display:flex;align-items:center;gap:16px;margin-bottom:10px;}
+      .logo{width:52px;height:52px;border-radius:6px;object-fit:cover;}
+      .company-name{font-size:17px;font-weight:700;letter-spacing:0.04em;color:#0a1628;}
+      .company-info{font-size:11px;color:#666;margin-top:3px;}
+      .gold-line{border:none;border-top:2px solid #c9a84c;margin:14px 0 36px;}
+      .body p{margin-bottom:16px;}
+      .signature{margin-top:32px;line-height:1.8;}
+      .sig-name{font-weight:700;font-size:13px;}
+      .sig-detail{font-size:12px;color:#444;}
+      @media print{body{padding:48px 60px;}@page{size:letter;margin:0;}}
+    </style></head><body>
+    <div class="header">
+      <img src="https://novacor-platform.onrender.com/novacor-logo.jpg"
+        class="logo" alt="Novacor" onerror="this.style.display='none'">
+      <div>
+        <div class="company-name">NOVACOR LLC</div>
+        <div class="company-info">Kingman, AZ &nbsp;|&nbsp; NovacorLLC.com &nbsp;|&nbsp; (928) 249-4030</div>
+      </div>
+    </div>
+    <hr class="gold-line">
+    <div class="body">${bodyHtml}</div>
+    <div class="signature">
+      <div class="sig-name">Justin Casanova</div>
+      <div class="sig-detail">Novacor LLC | NovacorLLC.com</div>
+      <div class="sig-detail">(928) 249-4030</div>
+    </div>
+    </body></html>`;
+  } else {
+    html = `<!DOCTYPE html><html><head>
+    <title>KW Letter</title>
+    <style>
+      *{margin:0;padding:0;box-sizing:border-box;}
+      body{font-family:Arial,sans-serif;font-size:13px;color:#222;
+        padding:40px 72px 120px;max-width:850px;margin:0 auto;
+        line-height:1.7;min-height:100vh;position:relative;}
+      .header{text-align:center;margin-bottom:36px;}
+      .kw-logo{max-width:200px;height:auto;}
+      .date{font-size:12px;color:#444;margin-bottom:18px;}
+      .address-block{margin-bottom:28px;font-size:13px;line-height:1.6;}
+      .body p{margin-bottom:16px;}
+      .signature{margin-top:32px;line-height:1.8;}
+      .sig-name{font-weight:700;font-size:13px;}
+      .sig-detail{font-size:12px;color:#444;}
+      .kw-footer{position:fixed;bottom:28px;right:56px;text-align:right;
+        font-size:8.5px;color:#999;line-height:1.7;}
+      @media print{body{padding:40px 60px 120px;}
+        .kw-footer{position:fixed;bottom:24px;right:48px;}
+        @page{size:letter;margin:0;}}
+    </style></head><body>
+    <div class="header">
+      <img src="https://novacor-platform.onrender.com/amy-letterhead.png"
+        class="kw-logo" alt="KW Arizona Living Realty"
+        onerror="this.style.display='none'">
+    </div>
+    <div class="date">${today}</div>
+    <div class="address-block">
+      ${formattedName}<br>
+      ${mailingStreet}${cityLine ? '<br>'+cityLine : ''}
+    </div>
+    <div class="body">${bodyHtml}</div>
+    <div class="signature">
+      <div class="sig-name">Amy Casanova, Realtor&reg;</div>
+      <div class="sig-detail">Keller Williams Arizona Living Realty</div>
+      <div class="sig-detail">(928) 530-9393</div>
+    </div>
+    <div class="kw-footer">
+      KELLER WILLIAMS&reg; ARIZONA LIVING REALTY<br>
+      2800 Hualapai Mountain Road, Suite G<br>
+      Kingman, AZ 86401<br>
+      928-753-5003 &nbsp;&nbsp; Fax: 928-504-6060<br>
+      Each Keller Williams Office is Independently Owned and Operated
+    </div>
+    </body></html>`;
+  }
+
   const w = window.open('', '_blank');
-  w.document.write(`<!DOCTYPE html><html><head><title>Letter — ${address}</title>
-  <style>
-    body{font-family:Georgia,serif;max-width:700px;margin:40px auto;padding:40px;color:#222;line-height:1.8;font-size:15px;}
-    @media print{body{margin:0;padding:30px;}}
-  </style></head><body>
-  <div style="margin-bottom:32px;font-size:12px;color:#999;">${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
-  ${letter.replace(/\n/g,'<br>')}
-  </body></html>`);
+  w.document.write(html);
   w.document.close();
 };
 
