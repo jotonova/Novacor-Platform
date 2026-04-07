@@ -5365,28 +5365,41 @@ window.crmViewLetter = function(type) {
     </div>
     </body></html>`;
   } else {
+    // Amy's KW letter
     html = `<!DOCTYPE html><html><head>
-    <title>KW Letter</title>
+    <title>KW Letter — ${address}</title>
     <style>
-      *{margin:0;padding:0;box-sizing:border-box;}
-      body{font-family:Arial,sans-serif;font-size:13px;color:#222;
-        padding:40px 72px;max-width:850px;margin:0 auto;line-height:1.7;}
-      .header{text-align:center;margin-bottom:24px;padding-top:16px;}
-      .kw-logo{width:240px;height:auto;display:block;margin:0 auto;}
-      .date{font-size:12px;color:#444;margin-bottom:18px;}
-      .address-block{margin-bottom:28px;font-size:13px;line-height:1.6;}
-      .body p{margin-bottom:16px;}
-      .signature{margin-top:32px;line-height:1.8;}
-      .sig-name{font-weight:700;font-size:13px;}
-      .sig-detail{font-size:12px;color:#444;}
-      .kw-footer{margin-top:60px;padding-top:12px;border-top:1px solid #ddd;
-        text-align:right;font-size:8.5px;color:#999;line-height:1.7;}
-      @media print{body{padding:40px 60px;}@page{size:letter;margin:0;}}
+      * { margin:0; padding:0; box-sizing:border-box; }
+      body { font-family:Arial,sans-serif; font-size:13px; color:#222;
+        padding:48px 64px 80px; max-width:850px; margin:0 auto; line-height:1.7; }
+      .kw-header { text-align:center; margin-bottom:40px; }
+      .kw-logo-text { display:inline-flex; align-items:center; gap:10px; }
+      .kw-mark { font-size:42px; font-weight:900; color:#c41230;
+        font-family:'Arial Black',sans-serif; line-height:1; }
+      .kw-right { text-align:left; }
+      .kw-market { font-size:13px; font-weight:700; color:#4a4a4a;
+        letter-spacing:0.08em; line-height:1.2; text-transform:uppercase; }
+      .kw-brand { font-size:11px; color:#999; letter-spacing:0.12em;
+        text-transform:uppercase; font-weight:400; }
+      .date { font-size:12px; color:#444; margin-bottom:18px; }
+      .address-block { margin-bottom:28px; font-size:13px; line-height:1.6; }
+      .body p { margin-bottom:16px; }
+      .signature { margin-top:36px; line-height:1.8; }
+      .sig-name { font-weight:700; font-size:13px; }
+      .sig-detail { font-size:12px; color:#444; }
+      .kw-footer { margin-top:48px; padding-top:10px; border-top:1px solid #ddd;
+        text-align:right; font-size:8px; color:#aaa; line-height:1.8; }
+      @media print { body { padding:40px 56px 60px; }
+        @page { size:letter; margin:0; } }
     </style></head><body>
-    <div class="header">
-      <img src="https://novacor-platform.onrender.com/amy-letterhead.png"
-        class="kw-logo" alt="KW Arizona Living Realty"
-        onerror="this.style.display='none'">
+    <div class="kw-header">
+      <div class="kw-logo-text">
+        <div class="kw-mark">kw</div>
+        <div class="kw-right">
+          <div class="kw-market">ARIZONA<br>LIVING REALTY</div>
+          <div class="kw-brand">KELLERWILLIAMS.</div>
+        </div>
+      </div>
     </div>
     <div class="date">${today}</div>
     <div class="address-block">
@@ -5401,8 +5414,7 @@ window.crmViewLetter = function(type) {
     </div>
     <div class="kw-footer">
       KELLER WILLIAMS&reg; ARIZONA LIVING REALTY<br>
-      2800 Hualapai Mountain Road, Suite G<br>
-      Kingman, AZ 86401<br>
+      2800 Hualapai Mountain Road, Suite G &nbsp; Kingman, AZ 86401<br>
       928-753-5003 &nbsp;&nbsp; Fax: 928-504-6060<br>
       Each Keller Williams Office is Independently Owned and Operated
     </div>
