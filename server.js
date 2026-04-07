@@ -201,9 +201,13 @@ From: Justin Casanova, local real estate investor, Kingman AZ, Novacor LLC.
 - Mention the property address naturally
 - 3-4 short paragraphs, conversational tone
 - No pressure, just open a conversation about potentially selling
-- Sign off with Justin Casanova, Novacor LLC, Kingman AZ
 
-Return ONLY the letter text. No subject line, no extra formatting.`
+Write ONLY the body paragraphs of the letter — starting with "Dear ${firstName},"
+and ending after the last body paragraph.
+Do NOT include any signature, sign-off, closing, or contact information.
+The template will add those automatically.
+Do NOT write "Sincerely", "Best regards", "Justin Casanova", phone numbers,
+or any other closing content.`
         }]
       })
     });
