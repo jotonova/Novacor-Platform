@@ -5250,13 +5250,21 @@ window.openCrmContactModal = function(contactId) {
     lettersContainer.innerHTML = '<span style="font-size:0.78rem;color:var(--text-muted);">Loading...</span>';
 
     const CLAB_URL = 'https://novacor-conversion-lab.onrender.com';
-    fetch(`${CLAB_URL}/api/leads?limit=50`)
+    const leadId = c.leadId || c.lead_id;
+    const fetchUrl = leadId
+      ? `${CLAB_URL}/api/leads/${leadId}`
+      : `${CLAB_URL}/api/leads?limit=200`;
+    fetch(fetchUrl)
       .then(r=>r.json())
       .then(data=>{
-        const lead = data.leads?.find(l=>
-          l.address && c.address &&
-          l.address.toLowerCase().trim() === c.address.split(',')[0].toLowerCase().trim()
-        );
+        const lead = data.id ? data : data.leads?.find(l=>{
+          if(!l.address || !c.address) return false;
+          const crmStreet = c.address.split(',')[0].toLowerCase().trim();
+          const leadStreet = l.address.toLowerCase().trim();
+          return leadStreet === crmStreet ||
+                 leadStreet.includes(crmStreet) ||
+                 crmStreet.includes(leadStreet);
+        });
         if(!lead) {
           lettersContainer.innerHTML = '<span style="font-size:0.78rem;color:var(--text-muted);">No letter data found</span>';
           return;
