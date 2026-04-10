@@ -1242,8 +1242,19 @@ label {
       <div><label class="tm-label">Time (optional)</label><input type="time" id="tmTime"></div>
     </div>
     <div style="margin-top:16px;display:flex;align-items:center;gap:10px;">
-      <input type="checkbox" id="tmSendToCal" style="width:16px;height:16px;accent-color:var(--gold);cursor:pointer;">
+      <input type="checkbox" id="tmSendToCal" style="width:16px;height:16px;accent-color:var(--gold);cursor:pointer;"
+        onchange="const g=document.getElementById('tm-guests-section');if(g)g.style.display=this.checked?'block':'none';">
       <label for="tmSendToCal" style="font-size:0.78rem;color:var(--text-muted);cursor:pointer;user-select:none;">📅 Also send to Google Calendar <span style="font-size:0.68rem;opacity:0.6;">(requires time)</span></label>
+    </div>
+    <div id="tm-guests-section" style="display:none;margin-top:12px;">
+      <label class="form-label" style="font-size:0.72rem;letter-spacing:0.08em;">INVITE GUESTS</label>
+      <div style="margin-bottom:8px;">
+        <button type="button" id="tm-add-amy" onclick="tmToggleAmy()" style="padding:5px 12px;background:transparent;border:1px solid rgba(201,168,76,0.4);border-radius:4px;color:var(--gold);font-size:0.75rem;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;font-weight:600;transition:all 0.2s;">+ Amy Casanova</button>
+        <span style="font-size:0.7rem;color:var(--text-muted);margin-left:8px;" id="tm-amy-status"></span>
+      </div>
+      <input type="text" id="tmGuests" placeholder="Add more emails, comma separated..."
+        style="width:100%;padding:8px 12px;background:var(--input-bg,#0d1e35);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.82rem;box-sizing:border-box;"/>
+      <div style="font-size:0.68rem;color:var(--text-muted);margin-top:4px;">e.g. contractor@email.com, client@email.com</div>
     </div>
     <div class="tm-footer">
       <button class="tm-cancel" onclick="tasksCloseModal()">Cancel</button>
@@ -1352,9 +1363,45 @@ label {
     document.getElementById('tmDesc').value='';
     document.getElementById('tmTime').value='';
     document.getElementById('tmSendToCal').checked=false;
+    tmResetGuests();
     document.getElementById('tmDate').value=dateStr;
     document.getElementById('taskModalOverlay').classList.add('open');
     setTimeout(()=>document.getElementById('tmTitle').focus(),50);
+  };
+
+  window.tmToggleAmy=function(){
+    const btn=document.getElementById('tm-add-amy');
+    const status=document.getElementById('tm-amy-status');
+    const isAdded=btn.dataset.added==='true';
+    if(isAdded){
+      btn.dataset.added='false';btn.textContent='+ Amy Casanova';
+      btn.style.borderColor='rgba(201,168,76,0.4)';btn.style.background='transparent';
+      if(status)status.textContent='';
+    }else{
+      btn.dataset.added='true';btn.textContent='✓ Amy Casanova';
+      btn.style.borderColor='var(--gold)';btn.style.background='rgba(201,168,76,0.1)';
+      if(status)status.textContent='amy@desert-legacy.com';
+    }
+  };
+  window.tmGetAttendees=function(){
+    const attendees=[];
+    const amyBtn=document.getElementById('tm-add-amy');
+    if(amyBtn?.dataset.added==='true')attendees.push({email:'amy@desert-legacy.com'});
+    const extras=(document.getElementById('tmGuests')?.value||'')
+      .split(',').map(e=>e.trim()).filter(e=>e.includes('@'));
+    extras.forEach(email=>attendees.push({email}));
+    return attendees;
+  };
+  window.tmResetGuests=function(){
+    const amyBtn=document.getElementById('tm-add-amy');
+    if(amyBtn){amyBtn.dataset.added='false';amyBtn.textContent='+ Amy Casanova';
+      amyBtn.style.background='transparent';amyBtn.style.borderColor='rgba(201,168,76,0.4)';}
+    const amyStatus=document.getElementById('tm-amy-status');
+    if(amyStatus)amyStatus.textContent='';
+    const guestsInput=document.getElementById('tmGuests');
+    if(guestsInput)guestsInput.value='';
+    const guestsSection=document.getElementById('tm-guests-section');
+    if(guestsSection)guestsSection.style.display='none';
   };
 
   window.tasksOpenModal=function(){
@@ -1362,12 +1409,13 @@ label {
     document.getElementById('tmDesc').value='';
     document.getElementById('tmTime').value='';
     document.getElementById('tmSendToCal').checked=false;
+    tmResetGuests();
     const base=new Date();if(_view==='day')base.setDate(base.getDate()+_dayOff);
     document.getElementById('tmDate').value=_fmt(base);
     document.getElementById('taskModalOverlay').classList.add('open');
     setTimeout(()=>document.getElementById('tmTitle').focus(),50);
   };
-  window.tasksCloseModal=function(){document.getElementById('taskModalOverlay').classList.remove('open');};
+  window.tasksCloseModal=function(){document.getElementById('taskModalOverlay').classList.remove('open');tmResetGuests();};
   window.tasksSaveNew=async function(){
     const title=document.getElementById('tmTitle').value.trim(),desc=document.getElementById('tmDesc').value.trim(),date=document.getElementById('tmDate').value,time=document.getElementById('tmTime').value,sendToCal=document.getElementById('tmSendToCal').checked;
     if(!title){alert('Please enter a title.');return;}
@@ -1381,11 +1429,12 @@ label {
         const start=`${date}T${time}:00`,ed=new Date(`${date}T${time}:00`);
         ed.setHours(ed.getHours()+1);
         const end=ed.toISOString().slice(0,19);
+        const attendees=tmGetAttendees();
         try{
-          const cr=await fetch('/api/google/calendar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,start,end,description:desc||''})});
+          const cr=await fetch('/api/google/calendar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,start,end,description:desc||'',attendees,sendUpdates:'all'})});
           const cd=await cr.json();
           if(cd.ok&&cd.id){
-            await fetch(`/api/tasks/${task.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({calendar_event_id:cd.id})});
+            await fetch(`/api/tasks/${task.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({calendar_event_id:cd.id,attendees:JSON.stringify(attendees)})});
             task.calendar_event_id=cd.id;
           }
         }catch(calErr){console.error('GCal push failed:',calErr);}
