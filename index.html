@@ -3574,7 +3574,67 @@ function openCalendarAdd() {
   document.getElementById('cal-add-location').value = '';
   document.getElementById('cal-add-description').value = '';
   document.getElementById('cal-add-status').textContent = '';
+  calResetGuests();
   openModal('modal-calendar-add');
+}
+
+const CAL_AMY_EMAIL = 'amy@novacorgroup.com';
+let _calAmyAdded = false;
+let _calExtraGuests = [];
+
+function calToggleAmy() {
+  _calAmyAdded = !_calAmyAdded;
+  const btn = document.getElementById('cal-amy-btn');
+  if (_calAmyAdded) {
+    btn.style.background = 'var(--gold)';
+    btn.style.color = '#000';
+    btn.style.borderColor = 'var(--gold)';
+    btn.textContent = '✓ Amy';
+  } else {
+    btn.style.background = 'transparent';
+    btn.style.color = 'var(--text-muted)';
+    btn.style.borderColor = 'var(--border)';
+    btn.textContent = '+ Amy';
+  }
+}
+
+function calAddGuestFromInput() {
+  const input = document.getElementById('cal-guest-input');
+  const email = (input.value || '').trim().toLowerCase();
+  if (!email || !email.includes('@')) return;
+  if (_calExtraGuests.includes(email) || email === CAL_AMY_EMAIL) { input.value = ''; return; }
+  _calExtraGuests.push(email);
+  input.value = '';
+  calRenderGuestList();
+}
+
+function calRenderGuestList() {
+  const list = document.getElementById('cal-guest-list');
+  list.innerHTML = _calExtraGuests.map(e =>
+    `<span style="display:inline-flex;align-items:center;gap:4px;background:var(--card-bg);border:1px solid var(--border);border-radius:20px;padding:2px 10px;font-size:0.78rem;color:var(--text-secondary);">${e}<button onclick="calRemoveGuest('${e}')" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.9rem;line-height:1;padding:0 0 0 2px;">×</button></span>`
+  ).join('');
+}
+
+function calRemoveGuest(email) {
+  _calExtraGuests = _calExtraGuests.filter(e => e !== email);
+  calRenderGuestList();
+}
+
+function calGetGuests() {
+  const guests = [..._calExtraGuests];
+  if (_calAmyAdded) guests.push(CAL_AMY_EMAIL);
+  return guests;
+}
+
+function calResetGuests() {
+  _calAmyAdded = false;
+  _calExtraGuests = [];
+  const btn = document.getElementById('cal-amy-btn');
+  if (btn) { btn.style.background='transparent'; btn.style.color='var(--text-muted)'; btn.style.borderColor='var(--border)'; btn.textContent='+ Amy'; }
+  const list = document.getElementById('cal-guest-list');
+  if (list) list.innerHTML = '';
+  const input = document.getElementById('cal-guest-input');
+  if (input) input.value = '';
 }
 
 async function createCalendarEvent() {
@@ -3588,16 +3648,18 @@ async function createCalendarEvent() {
   if (!title || !date || !startTime || !endTime) { status.textContent = 'Title, date, and times are required.'; return; }
   const start = new Date(`${date}T${startTime}`).toISOString();
   const end   = new Date(`${date}T${endTime}`).toISOString();
+  const attendees = calGetGuests();
   status.textContent = 'Adding…';
   try {
     const r = await fetch('/api/google/calendar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, start, end, location: location || undefined, description: description || undefined }),
+      body: JSON.stringify({ title, start, end, location: location || undefined, description: description || undefined, attendees, sendUpdates: 'all' }),
     });
     if (!r.ok) { const d = await r.json(); throw new Error(d.error || 'Failed'); }
     closeModal('modal-calendar-add');
     toast('Event added ✓');
+    calResetGuests();
     loadCalendarWidget();
   } catch(e) {
     status.textContent = 'Error: ' + e.message;
@@ -6389,6 +6451,16 @@ window.bulkImportNotionExpenses = async function() {
     <div class="form-group"><label>Location (optional)</label><input type="text" id="cal-add-location" placeholder="Address or room"></div>
   </div>
   <div class="form-group"><label>Description (optional)</label><textarea id="cal-add-description" rows="3" placeholder="Notes…"></textarea></div>
+  <!-- Guests -->
+  <div class="form-group" style="margin-bottom:10px;">
+    <label style="margin-bottom:6px;display:block;">Guests</label>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
+      <button type="button" id="cal-amy-btn" onclick="calToggleAmy()" style="padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text-muted);cursor:pointer;font-size:0.78rem;transition:all 0.2s;">+ Amy</button>
+      <input type="email" id="cal-guest-input" placeholder="Add email…" style="flex:1;min-width:160px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text-primary);font-size:0.82rem;" onkeydown="if(event.key==='Enter'){event.preventDefault();calAddGuestFromInput();}">
+      <button type="button" onclick="calAddGuestFromInput()" style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text-muted);cursor:pointer;font-size:0.78rem;">Add</button>
+    </div>
+    <div id="cal-guest-list" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+  </div>
   <div style="display:flex;gap:10px;align-items:center;">
     <button class="btn btn-gold" onclick="createCalendarEvent()">Add Event</button>
     <button class="btn btn-ghost" onclick="closeModal('modal-calendar-add')">Cancel</button>
