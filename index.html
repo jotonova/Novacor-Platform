@@ -3696,9 +3696,10 @@ window.selectGuestSuggestion = function(email, inputId, dropdownId) {
   const input = document.getElementById(inputId);
   const dropdown = document.getElementById(dropdownId);
   if (input) {
-    const current = input.value.split(',').map(e => e.trim()).filter(e => e && e !== email);
-    current.push(email);
-    input.value = current.join(', ') + ', ';
+    const parts = input.value.split(',').map(e => e.trim()).filter(Boolean);
+    if (parts.length > 0) parts.pop();
+    parts.push(email);
+    input.value = parts.join(', ');
     input.focus();
   }
   if (dropdown) dropdown.style.display = 'none';
