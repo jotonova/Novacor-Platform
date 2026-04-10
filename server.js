@@ -610,19 +610,27 @@ app.post('/api/google/calendar', async (req, res) => {
     const auth = await getAuthedClient(req);
     if (!auth) return res.status(401).json({ error: 'not_authenticated' });
 
-    const { title, start, end, location, description } = req.body;
+    const { title, start, end, location, description, attendees, sendUpdates } = req.body;
     if (!title || !start || !end) return res.status(400).json({ error: 'title, start, end required' });
+
+    // Normalize attendees — accept [{email}] objects or plain strings
+    const normalizedAttendees = Array.isArray(attendees)
+      ? attendees.map(a => typeof a === 'string' ? { email: a } : a).filter(a => a.email)
+      : [];
 
     const cal = google.calendar({ version: 'v3', auth });
     const timeZone = 'America/Phoenix';
     const r = await cal.events.insert({
       calendarId: 'primary',
+      sendNotifications: true,
+      sendUpdates: sendUpdates || (normalizedAttendees.length ? 'all' : 'none'),
       requestBody: {
         summary: title,
         start: { dateTime: start, timeZone },
         end: { dateTime: end, timeZone },
         ...(location ? { location } : {}),
         ...(description ? { description } : {}),
+        ...(normalizedAttendees.length ? { attendees: normalizedAttendees } : {}),
       },
     });
     res.json({ ok: true, id: r.data.id });
