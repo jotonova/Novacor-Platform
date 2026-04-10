@@ -1252,8 +1252,14 @@ label {
         <button type="button" id="tm-add-amy" onclick="tmToggleAmy()" style="padding:5px 12px;background:transparent;border:1px solid rgba(201,168,76,0.4);border-radius:4px;color:var(--gold);font-size:0.75rem;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;font-weight:600;transition:all 0.2s;">+ Amy Casanova</button>
         <span style="font-size:0.7rem;color:var(--text-muted);margin-left:8px;" id="tm-amy-status"></span>
       </div>
-      <input type="text" id="tmGuests" placeholder="Add more emails, comma separated..."
-        style="width:100%;padding:8px 12px;background:var(--input-bg,#0d1e35);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.82rem;box-sizing:border-box;"/>
+      <div style="position:relative;">
+        <input type="text" id="tmGuests" placeholder="Add more emails, comma separated..."
+          style="width:100%;padding:8px 12px;background:var(--input-bg,#0d1e35);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.82rem;box-sizing:border-box;"
+          oninput="showGuestSuggestions(this,'tm-guest-dropdown')"
+          onfocus="loadGuestHistory().then(()=>showGuestSuggestions(this,'tm-guest-dropdown'))"
+          onblur="setTimeout(()=>{const d=document.getElementById('tm-guest-dropdown');if(d)d.style.display='none';},200)"/>
+        <div id="tm-guest-dropdown" style="display:none;position:absolute;background:var(--card-bg,#0d1e35);border:1px solid var(--border);border-radius:6px;width:100%;z-index:1000;max-height:200px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.3);margin-top:2px;"></div>
+      </div>
       <div style="font-size:0.68rem;color:var(--text-muted);margin-top:4px;">e.g. contractor@email.com, client@email.com</div>
     </div>
     <div class="tm-footer">
@@ -1430,6 +1436,8 @@ label {
         ed.setHours(ed.getHours()+1);
         const end=ed.toISOString().slice(0,19);
         const attendees=tmGetAttendees();
+        const tmExtras=(document.getElementById('tmGuests')?.value||'').split(',').map(e=>e.trim()).filter(e=>e.includes('@'));
+        tmExtras.forEach(email=>saveGuestToHistory(email));
         try{
           const cr=await fetch('/api/google/calendar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,start,end,description:desc||'',attendees,sendUpdates:'all'})});
           const cd=await cr.json();
@@ -3637,6 +3645,67 @@ function calResetGuests() {
   if (input) input.value = '';
 }
 
+// ── Guest Autocomplete ────────────────────────────────────────────────────────
+
+window._guestHistory = null;
+
+window.loadGuestHistory = async function() {
+  if (window._guestHistory) return window._guestHistory;
+  try {
+    const r = await fetch('/api/guest-history');
+    window._guestHistory = await r.json();
+  } catch(e) { window._guestHistory = [{ email: 'amy@desert-legacy.com', name: 'Amy Casanova' }]; }
+  return window._guestHistory;
+};
+
+window.saveGuestToHistory = async function(email) {
+  if (!email || !email.includes('@')) return;
+  if (email === 'amy@desert-legacy.com') return;
+  try {
+    await fetch('/api/guest-history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    window._guestHistory = null;
+    await window.loadGuestHistory();
+  } catch(e) {}
+};
+
+window.showGuestSuggestions = function(inputEl, dropdownId) {
+  const query = inputEl.value.toLowerCase().trim();
+  const dropdown = document.getElementById(dropdownId);
+  if (!dropdown) return;
+  if (!query || !window._guestHistory?.length) { dropdown.style.display = 'none'; return; }
+  const matches = window._guestHistory.filter(g =>
+    g.email.toLowerCase().includes(query) || (g.name || '').toLowerCase().includes(query)
+  ).slice(0, 5);
+  if (!matches.length) { dropdown.style.display = 'none'; return; }
+  dropdown.innerHTML = matches.map(g =>
+    `<div onclick="selectGuestSuggestion('${g.email}','${inputEl.id}','${dropdownId}')"
+      style="padding:8px 12px;cursor:pointer;font-size:0.8rem;color:var(--text);border-bottom:1px solid var(--border);"
+      onmouseover="this.style.background='rgba(201,168,76,0.1)'" onmouseout="this.style.background='transparent'">
+      <div style="font-weight:600;">${g.name || g.email.split('@')[0]}</div>
+      <div style="font-size:0.72rem;color:var(--text-muted);">${g.email}</div>
+    </div>`
+  ).join('');
+  dropdown.style.display = 'block';
+};
+
+window.selectGuestSuggestion = function(email, inputId, dropdownId) {
+  const input = document.getElementById(inputId);
+  const dropdown = document.getElementById(dropdownId);
+  if (input) {
+    const current = input.value.split(',').map(e => e.trim()).filter(e => e && e !== email);
+    current.push(email);
+    input.value = current.join(', ') + ', ';
+    input.focus();
+  }
+  if (dropdown) dropdown.style.display = 'none';
+};
+
+window.loadGuestHistory();
+
 async function createCalendarEvent() {
   const title       = document.getElementById('cal-add-title').value.trim();
   const date        = document.getElementById('cal-add-date').value;
@@ -3657,6 +3726,8 @@ async function createCalendarEvent() {
       body: JSON.stringify({ title, start, end, location: location || undefined, description: description || undefined, attendees, sendUpdates: 'all' }),
     });
     if (!r.ok) { const d = await r.json(); throw new Error(d.error || 'Failed'); }
+    const extras = (document.getElementById('cal-guest-input')?.value || '').split(',').map(e => e.trim()).filter(e => e.includes('@'));
+    extras.forEach(email => saveGuestToHistory(email));
     closeModal('modal-calendar-add');
     toast('Event added ✓');
     calResetGuests();
@@ -6456,7 +6527,14 @@ window.bulkImportNotionExpenses = async function() {
     <label style="margin-bottom:6px;display:block;">Guests</label>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
       <button type="button" id="cal-amy-btn" onclick="calToggleAmy()" style="padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text-muted);cursor:pointer;font-size:0.78rem;transition:all 0.2s;">+ Amy</button>
-      <input type="email" id="cal-guest-input" placeholder="Add email…" style="flex:1;min-width:160px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text-primary);font-size:0.82rem;" onkeydown="if(event.key==='Enter'){event.preventDefault();calAddGuestFromInput();}">
+      <div style="position:relative;flex:1;min-width:160px;">
+        <input type="email" id="cal-guest-input" placeholder="Add email…" style="width:100%;box-sizing:border-box;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text-primary);font-size:0.82rem;"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();calAddGuestFromInput();}"
+          oninput="showGuestSuggestions(this,'cal-guest-dropdown')"
+          onfocus="loadGuestHistory().then(()=>showGuestSuggestions(this,'cal-guest-dropdown'))"
+          onblur="setTimeout(()=>{const d=document.getElementById('cal-guest-dropdown');if(d)d.style.display='none';},200)">
+        <div id="cal-guest-dropdown" style="display:none;position:absolute;background:var(--card-bg,#0d1e35);border:1px solid var(--border);border-radius:6px;width:100%;z-index:1000;max-height:200px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.3);margin-top:2px;"></div>
+      </div>
       <button type="button" onclick="calAddGuestFromInput()" style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text-muted);cursor:pointer;font-size:0.78rem;">Add</button>
     </div>
     <div id="cal-guest-list" style="display:flex;flex-wrap:wrap;gap:6px;"></div>

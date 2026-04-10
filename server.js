@@ -1610,6 +1610,39 @@ app.delete('/api/google/calendar/:eventId', async (req, res) => {
   }
 });
 
+// ── Guest History ─────────────────────────────────────────────────────────────
+
+app.get('/api/guest-history', async (req, res) => {
+  try {
+    const result = await db.execute({ sql: "SELECT value FROM kv WHERE key = 'nc_guest_history'", args: [] });
+    const guests = result.rows[0] ? JSON.parse(result.rows[0].value) : [];
+    if (!guests.find(g => g.email === 'amy@desert-legacy.com')) {
+      guests.unshift({ email: 'amy@desert-legacy.com', name: 'Amy Casanova' });
+    }
+    res.json(guests);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/guest-history', async (req, res) => {
+  try {
+    const { email, name } = req.body;
+    if (!email || !email.includes('@')) return res.status(400).json({ error: 'Invalid email' });
+    const result = await db.execute({ sql: "SELECT value FROM kv WHERE key = 'nc_guest_history'", args: [] });
+    let guests = result.rows[0] ? JSON.parse(result.rows[0].value) : [];
+    if (!guests.find(g => g.email === 'amy@desert-legacy.com')) {
+      guests.unshift({ email: 'amy@desert-legacy.com', name: 'Amy Casanova' });
+    }
+    if (!guests.find(g => g.email === email)) {
+      guests.push({ email, name: name || email.split('@')[0] });
+      await db.execute({
+        sql: "INSERT INTO kv (key,value) VALUES ('nc_guest_history',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        args: [JSON.stringify(guests)],
+      });
+    }
+    res.json({ ok: true, guests });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3000;
