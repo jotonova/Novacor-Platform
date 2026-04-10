@@ -3706,6 +3706,13 @@ window.selectGuestSuggestion = function(email, inputId, dropdownId) {
 
 window.loadGuestHistory();
 
+// Pre-seed known contacts
+fetch('/api/guest-history', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email: 'justinamynova@gmail.com', name: 'Justin Casanova' })
+});
+
 async function createCalendarEvent() {
   const title       = document.getElementById('cal-add-title').value.trim();
   const date        = document.getElementById('cal-add-date').value;
