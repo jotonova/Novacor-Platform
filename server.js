@@ -1643,6 +1643,152 @@ app.post('/api/guest-history', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── External API ──────────────────────────────────────────────────────────────
+
+function requireApiKey(req, res, next) {
+  const key = req.headers['x-api-key'] || req.query.api_key;
+  const validKey = process.env.NOVABOOKS_API_KEY;
+  if (!validKey || key !== validKey) return res.status(401).json({ error: 'Unauthorized' });
+  next();
+}
+
+// GET /api/ext/deals — list all deals
+app.get('/api/ext/deals', requireApiKey, async (req, res) => {
+  try {
+    const result = await db.execute({ sql: "SELECT value FROM kv WHERE key='nc_active_deals'", args: [] });
+    const deals = JSON.parse(result.rows[0]?.value || '[]');
+    res.json(deals.map(d => ({
+      id: d.id,
+      address: d.address,
+      status: d.status,
+      purchasePrice: d.purchasePrice,
+    })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/ext/deals/:dealId/expenses — expenses for a deal
+app.get('/api/ext/deals/:dealId/expenses', requireApiKey, async (req, res) => {
+  try {
+    const result = await db.execute({ sql: "SELECT value FROM kv WHERE key='nc_active_deals'", args: [] });
+    const deals = JSON.parse(result.rows[0]?.value || '[]');
+    const deal = deals.find(d => d.id === req.params.dealId);
+    if (!deal) return res.status(404).json({ error: 'Deal not found' });
+    res.json(deal.expenses || []);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/ext/deals/:dealId/expenses — add expense to a deal
+app.post('/api/ext/deals/:dealId/expenses', requireApiKey, async (req, res) => {
+  try {
+    const { date, vendor, description, amount, category, irsCategory, notes } = req.body;
+    if (!amount || !vendor || !date) return res.status(400).json({ error: 'amount, vendor, and date are required' });
+
+    const result = await db.execute({ sql: "SELECT value FROM kv WHERE key='nc_active_deals'", args: [] });
+    const deals = JSON.parse(result.rows[0]?.value || '[]');
+    const idx = deals.findIndex(d => d.id === req.params.dealId);
+    if (idx === -1) return res.status(404).json({ error: 'Deal not found' });
+
+    const expense = {
+      id: `exp_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+      date,
+      vendor,
+      description: description || vendor,
+      amount: parseFloat(amount),
+      category: category || 'Rehab Materials',
+      irsCategory: irsCategory || 'Other Expenses',
+      notes: notes || '',
+      source: req.headers['x-source'] || 'external_api',
+      createdAt: new Date().toISOString(),
+    };
+
+    if (!deals[idx].expenses) deals[idx].expenses = [];
+    deals[idx].expenses.push(expense);
+
+    await db.execute({
+      sql: "INSERT INTO kv (key,value) VALUES ('nc_active_deals',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+      args: [JSON.stringify(deals)],
+    });
+
+    res.json({ ok: true, expense });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/ext/deals/:dealId/expenses/check-duplicate
+app.post('/api/ext/deals/:dealId/expenses/check-duplicate', requireApiKey, async (req, res) => {
+  try {
+    const { vendor, amount, date } = req.body;
+    const result = await db.execute({ sql: "SELECT value FROM kv WHERE key='nc_active_deals'", args: [] });
+    const deals = JSON.parse(result.rows[0]?.value || '[]');
+    const deal = deals.find(d => d.id === req.params.dealId);
+    if (!deal) return res.status(404).json({ error: 'Deal not found' });
+
+    const duplicate = (deal.expenses || []).find(e =>
+      e.vendor?.toLowerCase() === vendor?.toLowerCase() &&
+      parseFloat(e.amount) === parseFloat(amount) &&
+      e.date === date
+    );
+    res.json({ isDuplicate: !!duplicate, existingExpense: duplicate || null });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/ext/nestimate — lead intake from Amy's website
+app.post('/api/ext/nestimate', requireApiKey, async (req, res) => {
+  try {
+    const { address, city, state, zip, owner_first, owner_last, phone, email, intent_signal } = req.body;
+    if (!address || !phone) return res.status(400).json({ error: 'address and phone are required' });
+
+    const contact = {
+      id: `nest_${Date.now()}`,
+      name: `${(owner_last || '').toUpperCase()} ${(owner_first || '').toUpperCase()}`.trim(),
+      type: 'seller',
+      source: 'nestimate',
+      phone,
+      email: email || '',
+      address: `${address}, ${city || 'Kingman'}, ${state || 'AZ'} ${zip || ''}`.trim(),
+      status: 'Active',
+      ai_score: null,
+      motivation_tags: '["nestimate_request"]',
+      notes: `Nestimate valuation request. Intent: ${intent_signal || 'unknown'}`,
+      added: new Date().toISOString().split('T')[0],
+    };
+
+    const r2 = await db.execute({ sql: "SELECT value FROM kv WHERE key='nc_crm_contacts'", args: [] });
+    const contacts = JSON.parse(r2.rows[0]?.value || '[]');
+    contacts.push(contact);
+    await db.execute({
+      sql: "INSERT INTO kv (key,value) VALUES ('nc_crm_contacts',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+      args: [JSON.stringify(contacts)],
+    });
+
+    // Notify Justin via Gmail API
+    try {
+      const auth = await getAuthedClient(req);
+      if (auth) {
+        const gmail = google.gmail({ version: 'v1', auth });
+        const subject = `New Nestimate Lead — ${address}`;
+        const body = [
+          `Name: ${owner_first || ''} ${owner_last || ''}`,
+          `Phone: ${phone}`,
+          `Email: ${email || 'n/a'}`,
+          `Address: ${address}, ${city || ''} ${state || ''} ${zip || ''}`,
+          `Intent: ${intent_signal || 'Not specified'}`,
+        ].join('\n');
+        const raw = [
+          'To: justinamynova@gmail.com',
+          `Subject: ${subject}`,
+          'Content-Type: text/plain; charset=utf-8',
+          'MIME-Version: 1.0',
+          '',
+          body,
+        ].join('\r\n');
+        await gmail.users.messages.send({ userId: 'me', requestBody: { raw: Buffer.from(raw).toString('base64url') } });
+      }
+    } catch (mailErr) { console.error('[Nestimate notify]', mailErr.message); }
+
+    res.json({ ok: true, contactId: contact.id });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3000;
