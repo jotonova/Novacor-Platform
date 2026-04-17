@@ -4423,6 +4423,13 @@ async function saveExpense() {
     return;
   }
 
+  // Re-fetch latest nc_active_deals from Turso before any write to avoid overwriting
+  // expenses added by the external API (receipt-sync) since the page loaded
+  try {
+    const _fresh = await fetch('/api/store/nc_active_deals').then(r => r.json());
+    if (_fresh && !_fresh.error) _cache['nc_active_deals'] = typeof _fresh === 'string' ? JSON.parse(_fresh) : _fresh;
+  } catch(e) { console.warn('[saveExpense] Could not refresh from Turso:', e.message); }
+
   // Handle editing an existing expense
   if(window._editingExpenseIdx !== undefined && window._editingExpenseIdx !== null) {
     var idx = window._editingExpenseIdx;
@@ -4544,7 +4551,12 @@ async function saveExpense() {
   }
 }
 
-function deleteDealExpense(i) {
+async function deleteDealExpense(i) {
+  // Re-fetch latest from Turso before delete to avoid clobbering API-added expenses
+  try {
+    const _fresh = await fetch('/api/store/nc_active_deals').then(r => r.json());
+    if (_fresh && !_fresh.error) _cache['nc_active_deals'] = typeof _fresh === 'string' ? JSON.parse(_fresh) : _fresh;
+  } catch(e) { console.warn('[deleteDealExpense] Could not refresh from Turso:', e.message); }
   const deals = load('active_deals', []);
   const d = deals.find(x=>x.id===currentDealId);
   d.expenses.splice(i,1);
@@ -7983,7 +7995,7 @@ window.bulkImportNotionExpenses = async function() {
       const amount = parseFloat(exp.amount || 0);
       const date = exp.date || deal.coe || new Date().toISOString().slice(0,10);
       const vendor = exp.desc || exp.lineitem || exp.cat || 'Expense';
-      const cat = catMap[exp.lineitem || exp.cat] || 'Miscellaneous';
+      const cat = exp.irsCategory || catMap[exp.lineitem || exp.cat] || 'Miscellaneous';
 
       // Dedupe check
       const dup = dealTxns.find(t =>
