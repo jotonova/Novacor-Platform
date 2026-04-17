@@ -1702,6 +1702,7 @@ app.get('/api/ext/deals/:dealId/expenses', requireApiKey, async (req, res) => {
 app.post('/api/ext/deals/:dealId/expenses', requireApiKey, async (req, res) => {
   try {
     const { date, vendor, description, amount, category, irsCategory, notes } = req.body;
+    const receiptFilename = '';
     if (!amount || !vendor || !date) return res.status(400).json({ error: 'amount, vendor, and date are required' });
 
     // Always fresh read from Turso immediately before write — never use cached data
