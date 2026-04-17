@@ -9,6 +9,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ── Passcode auth ─────────────────────────────────────────────────────────────
 
+console.log('[Startup] NOVABOOKS_API_KEY present:', !!process.env.NOVABOOKS_API_KEY, 'length:', (process.env.NOVABOOKS_API_KEY || '').length);
+
 const PASSCODE   = process.env.PLATFORM_PASSCODE || '0000';
 const COOKIE_SECRET = process.env.COOKIE_SECRET || 'novacor-platform-secret';
 const COOKIE_NAME   = 'platform_auth';
@@ -1648,6 +1650,7 @@ app.post('/api/guest-history', async (req, res) => {
 function requireApiKey(req, res, next) {
   const key = req.headers['x-api-key'] || req.query.api_key;
   const validKey = process.env.NOVABOOKS_API_KEY;
+  console.log('[Auth] received key length:', (key || '').length, 'valid key length:', (validKey || '').length, 'match:', key === validKey);
   if (!validKey || key !== validKey) return res.status(401).json({ error: 'Unauthorized' });
   next();
 }
