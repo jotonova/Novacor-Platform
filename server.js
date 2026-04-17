@@ -33,6 +33,8 @@ function isAuthenticated(req) {
 }
 
 function requireAuth(req, res, next) {
+  // External API routes use their own key-based auth — skip cookie check
+  if (req.path.startsWith('/api/ext/')) return next();
   if (isAuthenticated(req)) return next();
   // API routes → 401 JSON; page requests → redirect to /auth
   if (req.path.startsWith('/api/')) {
