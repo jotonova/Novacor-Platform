@@ -2175,6 +2175,7 @@ label {
       <input id="nb-txn-filter-start" type="date" onchange="nbLoadTransactions()" style="padding:8px 12px;background:var(--card-bg);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:0.82rem;">
       <input id="nb-txn-filter-end" type="date" onchange="nbLoadTransactions()" style="padding:8px 12px;background:var(--card-bg);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:0.82rem;">
       <button onclick="nbOpenTxnModal()" style="padding:8px 18px;background:var(--gold);color:var(--navy);border:none;border-radius:6px;font-weight:700;font-size:0.78rem;cursor:pointer;white-space:nowrap;">+ Add</button>
+      <button onclick="nbOpenBatchAssign()" style="padding:7px 14px;background:transparent;border:1px solid var(--border);border-radius:4px;color:var(--text-muted);font-size:0.75rem;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;font-weight:600;white-space:nowrap;">🏠 Assign Property</button>
       <button id="nb-txn-view-toggle" onclick="nbToggleTxnView()" style="padding:7px 14px;background:transparent;border:1px solid var(--gold);border-radius:4px;color:var(--gold);font-size:0.75rem;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;font-weight:600;">📊 Category View</button>
     </div>
     <div id="nb-txn-list" style="display:none;"></div>
@@ -2327,6 +2328,14 @@ label {
           <label style="display:flex;align-items:center;gap:8px;font-size:0.8rem;color:var(--text);cursor:pointer;"><input type="checkbox" id="rpt-txns" style="accent-color:var(--gold);"> All Transactions</label>
           <label style="display:flex;align-items:center;gap:8px;font-size:0.8rem;color:var(--text);cursor:pointer;"><input type="checkbox" id="rpt-irs-cats" checked style="accent-color:var(--gold);"> IRS Category Summary</label>
         </div>
+      </div>
+
+      <!-- Property filter -->
+      <div style="margin-bottom:20px;">
+        <div style="font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px;">Property</div>
+        <select id="nb-report-deal" class="nb-select" style="width:260px;">
+          <option value="">All Properties</option>
+        </select>
       </div>
 
       <!-- Generate buttons -->
@@ -6625,6 +6634,23 @@ window.bulkImportNotionExpenses = async function() {
   </div>
 </div>
 
+<div class="nb-modal-overlay" id="nb-batch-assign-modal">
+  <div class="nb-modal" style="max-width:420px;">
+    <div class="nb-modal-title">🏠 Assign Property to Transactions</div>
+    <label class="nb-label">Property / Deal</label>
+    <select id="nb-batch-deal" class="nb-select" style="margin-bottom:14px;"></select>
+    <label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;color:var(--text);cursor:pointer;margin-bottom:18px;">
+      <input type="checkbox" id="nb-batch-unassigned-only" checked style="accent-color:var(--gold);">
+      Only apply to transactions with no property assigned
+    </label>
+    <div id="nb-batch-preview" style="font-size:0.78rem;color:var(--text-muted);margin-bottom:16px;min-height:20px;"></div>
+    <div class="nb-footer">
+      <button class="nb-btn-cancel" onclick="nbCloseModal('nb-batch-assign-modal')">Cancel</button>
+      <button class="nb-btn-save" onclick="nbBatchAssign()">Apply to All Matching</button>
+    </div>
+  </div>
+</div>
+
 <div class="nb-modal-overlay" id="nb-mileage-modal">
   <div class="nb-modal">
     <div class="nb-modal-title">Log Mileage Trip</div>
@@ -6918,12 +6944,57 @@ window.bulkImportNotionExpenses = async function() {
   }
   function nbPopulateTxnDealFilter() {
     fetch('/api/nb/deals').then(r=>r.json()).then(deals=>{
+      const opts = deals.map(d=>`<option value="${d.id}">${d.address}</option>`).join('');
       const sel=document.getElementById('nb-txn-filter-deal');
-      if(!sel) return;
-      sel.innerHTML='<option value="">All Deals</option>'+
-        deals.map(d=>`<option value="${d.id}">${d.address}</option>`).join('');
+      if(sel) sel.innerHTML='<option value="">All Deals</option>'+opts;
+      const rsel=document.getElementById('nb-report-deal');
+      if(rsel) rsel.innerHTML='<option value="">All Properties</option>'+opts;
     });
   }
+
+  window.nbOpenBatchAssign = async function() {
+    if(!_nbDeals.length) { const r=await fetch('/api/nb/deals').then(r=>r.json()); _nbDeals=r; }
+    const sel=$('nb-batch-deal');
+    sel.innerHTML='<option value="">— Select a property —</option>'+_nbDeals.map(d=>`<option value="${d.id}">${d.address}</option>`).join('');
+    $('nb-batch-preview').textContent='';
+    $('nb-batch-unassigned-only').checked=true;
+    nbBatchAssignPreview();
+    nbOpenModal('nb-batch-assign-modal');
+  };
+
+  async function nbBatchAssignPreview() {
+    const dealId=$('nb-batch-deal')?.value;
+    const unassignedOnly=$('nb-batch-unassigned-only')?.checked;
+    if(!dealId) { $('nb-batch-preview').textContent='Select a property to see how many transactions will be updated.'; return; }
+    const txns=await fetch('/api/nb/transactions').then(r=>r.json());
+    const matching=txns.filter(t=>unassignedOnly?!t.deal_id:true);
+    const dealName=_nbDeals.find(d=>d.id===dealId)?.address||dealId;
+    $('nb-batch-preview').textContent=`${matching.length} transaction${matching.length!==1?'s':''} will be assigned → ${dealName.split(',')[0]}`;
+  }
+
+  window.nbBatchAssign = async function() {
+    const dealId=$('nb-batch-deal')?.value;
+    if(!dealId) { alert('Please select a property.'); return; }
+    const unassignedOnly=$('nb-batch-unassigned-only')?.checked;
+    const txns=await fetch('/api/nb/transactions').then(r=>r.json());
+    const targets=txns.filter(t=>unassignedOnly?!t.deal_id:true);
+    if(!targets.length) { alert('No matching transactions found.'); return; }
+    const dealName=_nbDeals.find(d=>d.id===dealId)?.address||dealId;
+    let updated=0;
+    for(const t of targets) {
+      await fetch(`/api/nb/transactions/${t.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({deal_id:dealId})});
+      updated++;
+    }
+    nbCloseModal('nb-batch-assign-modal');
+    nbLoadTransactions();
+    nbLoadDashboard();
+    alert(`✅ Updated ${updated} transaction${updated!==1?'s':''} → ${dealName.split(',')[0]}`);
+  };
+
+  // Update preview when dropdown or checkbox changes
+  document.addEventListener('change', function(e) {
+    if(e.target.id==='nb-batch-deal'||e.target.id==='nb-batch-unassigned-only') nbBatchAssignPreview();
+  });
 
   function nbPopulateTxnModal() {
     const type=$('nb-txn-type').value;
@@ -7464,8 +7535,10 @@ window.bulkImportNotionExpenses = async function() {
       irsCategories:$('rpt-irs-cats').checked
     };
 
+    const reportDealFilter=$('nb-report-deal')?.value||'';
     const params=new URLSearchParams({start_date:startDate,end_date:endDate});
-    const [txns,mileage,vendors,deals,sum,taxPayments]=await Promise.all([
+    if(reportDealFilter) params.set('deal_id',reportDealFilter);
+    const [txnsRaw,mileage,vendors,deals,sum,taxPayments]=await Promise.all([
       fetch('/api/nb/transactions?'+params).then(r=>r.json()),
       fetch(`/api/nb/mileage?year=${year}`).then(r=>r.json()),
       fetch('/api/nb/vendors').then(r=>r.json()),
@@ -7474,9 +7547,11 @@ window.bulkImportNotionExpenses = async function() {
       fetch('/api/nb/tax-payments').then(r=>r.json())
     ]);
 
+    const txns = txnsRaw;
     const fmt=n=>'$'+Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
     const fmtD=s=>s?new Date(s+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'';
-    const periodLabel=`${fmtD(startDate)} – ${fmtD(endDate)}`;
+    const dealLabel = reportDealFilter ? (deals.find(d=>d.id===reportDealFilter)?.address?.split(',')[0]||'') : '';
+    const periodLabel=`${fmtD(startDate)} – ${fmtD(endDate)}${dealLabel?' · '+dealLabel:''}`;
 
     const income=txns.filter(t=>t.type==='income');
     const expenses=txns.filter(t=>t.type==='expense');
