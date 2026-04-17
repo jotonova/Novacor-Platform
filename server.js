@@ -1690,41 +1690,44 @@ app.get('/api/ext/deals/by-address', requireApiKey, async (req, res) => {
 // GET /api/ext/deals/:dealId/expenses — expenses for a deal
 app.get('/api/ext/deals/:dealId/expenses', requireApiKey, async (req, res) => {
   try {
-    const result = await db.execute({ sql: "SELECT value FROM kv WHERE key='nc_active_deals'", args: [] });
-    const deals = JSON.parse(result.rows[0]?.value || '[]');
+    const r = await db.execute({ sql: "SELECT value FROM kv WHERE key='nc_active_deals'", args: [] });
+    const deals = JSON.parse(r.rows[0]?.value || '[]');
     const deal = deals.find(d => d.id === req.params.dealId);
     if (!deal) return res.status(404).json({ error: 'Deal not found' });
     res.json(deal.expenses || []);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST /api/ext/deals/:dealId/expenses — add expense to a deal
+// POST /api/ext/deals/:dealId/expenses — add expense with fresh read from Turso
 app.post('/api/ext/deals/:dealId/expenses', requireApiKey, async (req, res) => {
   try {
     const { date, vendor, description, amount, category, irsCategory, notes } = req.body;
     if (!amount || !vendor || !date) return res.status(400).json({ error: 'amount, vendor, and date are required' });
 
-    const result = await db.execute({ sql: "SELECT value FROM kv WHERE key='nc_active_deals'", args: [] });
-    const deals = JSON.parse(result.rows[0]?.value || '[]');
+    // Always fresh read from Turso immediately before write — never use cached data
+    const r = await db.execute({ sql: "SELECT value FROM kv WHERE key='nc_active_deals'", args: [] });
+    const deals = JSON.parse(r.rows[0]?.value || '[]');
     const idx = deals.findIndex(d => d.id === req.params.dealId);
     if (idx === -1) return res.status(404).json({ error: 'Deal not found' });
 
     const expense = {
-      id: `exp_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-      date,
-      vendor,
-      description: description || vendor,
+      id: `exp_${Date.now()}_${Math.random().toString(36).substr(2,6)}`,
+      desc: description || vendor,
+      lineitem: category || 'Miscellaneous',
       amount: parseFloat(amount),
-      category: category || 'Rehab Materials',
+      date: date,
       irsCategory: irsCategory || 'Other Expenses',
-      notes: notes || '',
-      source: req.headers['x-source'] || 'external_api',
-      createdAt: new Date().toISOString(),
+      receipt: receiptFilename || '',
+      receiptRefs: [],
+      files: [],
+      source: 'receipt_sync',
+      createdAt: new Date().toISOString()
     };
 
     if (!deals[idx].expenses) deals[idx].expenses = [];
     deals[idx].expenses.push(expense);
 
+    // Write back to nc_active_deals — same key the UI reads and writes
     await db.execute({
       sql: "INSERT INTO kv (key,value) VALUES ('nc_active_deals',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
       args: [JSON.stringify(deals)],
@@ -1738,11 +1741,11 @@ app.post('/api/ext/deals/:dealId/expenses', requireApiKey, async (req, res) => {
 app.post('/api/ext/deals/:dealId/expenses/check-duplicate', requireApiKey, async (req, res) => {
   try {
     const { vendor, amount, date } = req.body;
-    const result = await db.execute({ sql: "SELECT value FROM kv WHERE key='nc_active_deals'", args: [] });
-    const deals = JSON.parse(result.rows[0]?.value || '[]');
+    // Fresh read from Turso — no cache
+    const r = await db.execute({ sql: "SELECT value FROM kv WHERE key='nc_active_deals'", args: [] });
+    const deals = JSON.parse(r.rows[0]?.value || '[]');
     const deal = deals.find(d => d.id === req.params.dealId);
     if (!deal) return res.status(404).json({ error: 'Deal not found' });
-
     const duplicate = (deal.expenses || []).find(e =>
       e.vendor?.toLowerCase() === vendor?.toLowerCase() &&
       parseFloat(e.amount) === parseFloat(amount) &&
