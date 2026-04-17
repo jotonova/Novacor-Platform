@@ -1701,7 +1701,7 @@ app.get('/api/ext/deals/:dealId/expenses', requireApiKey, async (req, res) => {
 // POST /api/ext/deals/:dealId/expenses — add expense to a deal
 app.post('/api/ext/deals/:dealId/expenses', requireApiKey, async (req, res) => {
   try {
-    const { date, vendor, description, amount, category, irsCategory, notes, receiptImage, receiptFilename } = req.body;
+    const { date, vendor, description, amount, category, irsCategory, notes } = req.body;
     if (!amount || !vendor || !date) return res.status(400).json({ error: 'amount, vendor, and date are required' });
 
     const result = await db.execute({ sql: "SELECT value FROM kv WHERE key='nc_active_deals'", args: [] });
@@ -1718,8 +1718,6 @@ app.post('/api/ext/deals/:dealId/expenses', requireApiKey, async (req, res) => {
       category: category || 'Rehab Materials',
       irsCategory: irsCategory || 'Other Expenses',
       notes: notes || '',
-      receiptImage: receiptImage || null,
-      receiptFilename: receiptFilename || null,
       source: req.headers['x-source'] || 'external_api',
       createdAt: new Date().toISOString(),
     };
