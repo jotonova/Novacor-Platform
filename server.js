@@ -210,11 +210,14 @@ From: Justin Casanova, local real estate investor, Kingman AZ, Novacor LLC.
 - End naturally before the signature block
 - Do NOT include any signature, sign-off, closing, or contact information`;
 
+    const apiKey = (process.env.ANTHROPIC_API_KEY || '').replace(/[\s\n\r]/g, '');
+    console.log('[generate-letter] ANTHROPIC_API_KEY present:', !!apiKey, 'length:', apiKey.length);
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': (process.env.ANTHROPIC_API_KEY || '').replace(/[\s\n\r]/g, ''),
+        'x-api-key': apiKey,
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
@@ -224,8 +227,12 @@ From: Justin Casanova, local real estate investor, Kingman AZ, Novacor LLC.
       })
     });
     const data = await response.json();
+    console.log('[generate-letter] Anthropic status:', response.status, 'body:', JSON.stringify(data).slice(0, 500));
     const letter = data.content?.[0]?.text || '';
-    if(!letter) return res.status(500).json({ error: 'No letter generated' });
+    if(!letter) {
+      console.error('[generate-letter] No letter in response. Anthropic error:', data.error || data);
+      return res.status(500).json({ error: 'No letter generated', upstream: data.error || data });
+    }
     res.json({ letter });
   } catch(e) {
     console.error('[GenerateLetter]', e.message);
