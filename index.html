@@ -899,6 +899,35 @@ label {
 .deadline-alert .alert-icon { font-size: 1.2rem; }
 
 /* ─────────────────────────────────────────
+   INVENTORY
+───────────────────────────────────────── */
+#page-inventory { padding: 0 32px 40px; }
+.inv-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+.inv-toolbar input, .inv-toolbar select { width: auto; flex: 1; min-width: 160px; max-width: 260px; }
+.inv-count-badge {
+  display: inline-flex; align-items: center;
+  background: rgba(201,168,76,0.12); border: 1px solid rgba(201,168,76,0.3);
+  color: var(--gold); border-radius: 20px;
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em;
+  padding: 3px 12px; margin-left: 10px; vertical-align: middle;
+}
+.inv-qty-cell { font-weight: 700; font-size: 1rem; color: var(--white); white-space: nowrap; }
+.inv-unit { font-size: 0.72rem; color: var(--text-muted); margin-left: 3px; }
+.inv-notes-cell { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: 0.82rem; }
+.inv-category-tag {
+  display: inline-block; padding: 2px 9px; border-radius: 12px;
+  font-size: 0.68rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  background: rgba(58,143,214,0.12); color: #5aabf0; border: 1px solid rgba(58,143,214,0.25);
+}
+.inv-table-wrap { overflow-x: auto; }
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable:hover { color: var(--gold); }
+th.sort-asc::after { content: ' ▲'; font-size: 0.6em; }
+th.sort-desc::after { content: ' ▼'; font-size: 0.6em; }
+.inv-empty { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+.inv-empty-icon { font-size: 2.5rem; margin-bottom: 12px; }
+
+/* ─────────────────────────────────────────
    FINANCIALS
 ───────────────────────────────────────── */
 #page-financials { padding: 0 32px 40px; }
@@ -1089,6 +1118,7 @@ label {
     <button class="nav-tab" onclick="switchPage('contractors')">Contractors</button>
     <button class="nav-tab" onclick="switchPage('crm')">CRM</button>
     <button class="nav-tab" onclick="switchPage('signs')">Signs</button>
+    <button class="nav-tab" onclick="switchPage('inventory')">📦 Inventory</button>
   </div>
 
   <div class="nav-right"></div>
@@ -2535,6 +2565,60 @@ label {
   </div>
 </div>
 
+<!-- ══════════════════════════════════════
+     INVENTORY PAGE
+══════════════════════════════════════ -->
+<div id="page-inventory" class="page">
+  <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+    <div>
+      <div class="page-eyebrow">Supplies &amp; Materials</div>
+      <div class="page-title">📦 <em>Inventory</em> <span class="inv-count-badge" id="inv-count-badge">0 items</span></div>
+      <div class="page-quote">Track leftover supplies and materials from flips so you never rebuy something you already have.</div>
+    </div>
+    <button class="btn btn-gold" onclick="openInventoryModal()" style="margin-top:6px;">+ Add Item</button>
+  </div>
+
+  <!-- Filter Bar -->
+  <div class="inv-toolbar">
+    <input type="text" id="inv-search" placeholder="🔍  Search items, notes, category…" oninput="renderInventory()">
+    <select id="inv-filter-category" onchange="renderInventory()">
+      <option value="">All Categories</option>
+      <option>Paint</option>
+      <option>Flooring</option>
+      <option>Fixtures</option>
+      <option>Hardware</option>
+      <option>Tools</option>
+      <option>Misc</option>
+    </select>
+    <select id="inv-filter-location" onchange="renderInventory()">
+      <option value="">All Locations</option>
+      <option>Garage</option>
+      <option>Trailer</option>
+      <option>Yard</option>
+      <option>Other</option>
+    </select>
+  </div>
+
+  <!-- Table -->
+  <div class="inv-table-wrap">
+    <table class="data-table" id="inv-table">
+      <thead>
+        <tr>
+          <th class="sortable" onclick="invSort('quantity')">Qty</th>
+          <th class="sortable" onclick="invSort('item')">Item</th>
+          <th class="sortable" onclick="invSort('category')">Category</th>
+          <th class="sortable" onclick="invSort('location')">Location</th>
+          <th>Source Deal</th>
+          <th>Notes</th>
+          <th class="sortable" onclick="invSort('createdAt')">Added</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="inv-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
 </div><!-- end #app -->
 
 <!-- ══════════════════════════════════════
@@ -3141,6 +3225,93 @@ label {
 </div>
 </div>
 
+<!-- ══ Inventory Add/Edit Modal ══ -->
+<div class="modal-overlay hidden" id="modal-inventory">
+<div class="modal" style="max-width:560px;">
+  <div class="modal-header">
+    <div class="modal-title" id="inv-modal-title">Add Inventory Item</div>
+    <button class="modal-close" onclick="closeModal('modal-inventory')">✕</button>
+  </div>
+  <input type="hidden" id="inv-edit-id">
+
+  <!-- Qty + Unit on same row -->
+  <div class="form-row" style="grid-template-columns:100px 1fr;gap:12px;">
+    <div class="form-group">
+      <label>Qty <span style="color:var(--gold)">*</span></label>
+      <input type="number" id="inv-qty" min="1" step="1" placeholder="4">
+    </div>
+    <div class="form-group">
+      <label>Unit</label>
+      <select id="inv-unit">
+        <option value="">— count only —</option>
+        <option>Gal</option>
+        <option>Oz</option>
+        <option>Ft</option>
+        <option>In</option>
+        <option>Lb</option>
+        <option>Sq Ft</option>
+        <option>Box</option>
+        <option>Case</option>
+        <option>Pack</option>
+        <option>Roll</option>
+        <option>Sheet</option>
+        <option>Bag</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="form-group">
+    <label>Item <span style="color:var(--gold)">*</span></label>
+    <input type="text" id="inv-item" placeholder="Behr Premium White Paint">
+  </div>
+
+  <div class="form-row form-row-2">
+    <div class="form-group">
+      <label>Category <span style="color:var(--gold)">*</span></label>
+      <select id="inv-category">
+        <option value="">Select…</option>
+        <option>Paint</option>
+        <option>Flooring</option>
+        <option>Fixtures</option>
+        <option>Hardware</option>
+        <option>Tools</option>
+        <option>Misc</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Location <span style="color:var(--gold)">*</span></label>
+      <select id="inv-location" onchange="invLocationChanged()">
+        <option value="">Select…</option>
+        <option>Garage</option>
+        <option>Trailer</option>
+        <option>Yard</option>
+        <option>Other</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="form-group">
+    <label>Source Deal <span style="font-size:0.68rem;color:var(--text-muted);text-transform:none;letter-spacing:0;">(optional)</span></label>
+    <select id="inv-source-deal">
+      <option value="">(none)</option>
+    </select>
+  </div>
+
+  <div class="form-group">
+    <label>Notes <span style="font-size:0.68rem;color:var(--text-muted);text-transform:none;letter-spacing:0;">(optional — specify "Other" location here)</span></label>
+    <textarea id="inv-notes" rows="3" placeholder="Leftover from 4455 Roosevelt…"></textarea>
+  </div>
+
+  <div style="display:flex;gap:10px;justify-content:space-between;margin-top:6px;">
+    <div style="display:flex;gap:10px;">
+      <button class="btn btn-gold" onclick="saveInventoryItem()">Save Item</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-inventory')">Cancel</button>
+    </div>
+    <button class="btn btn-ghost" id="inv-delete-btn" onclick="deleteInventoryItem()" style="color:var(--danger);border-color:var(--danger);display:none;">🗑 Delete</button>
+  </div>
+</div>
+</div>
+
 <!-- Toast -->
 <div id="toast"></div>
 
@@ -3208,6 +3379,7 @@ function switchPage(id) {
   if(id==='crm') renderCRM();
   if(id==='signs') renderSigns();
   if(id==='financials') renderFinancials();
+  if(id==='inventory') renderInventory();
   if(id==='conversionlab') {
     document.body.style.overflow = 'hidden';
   } else {
@@ -6501,6 +6673,211 @@ window.bulkImportNotionExpenses = async function() {
   renderDashboard();
   toast('📒 8 Notion expenses imported! Total: $11,647.98');
 };
+
+// ══════════════════════════════════════════════════════
+// INVENTORY
+// ══════════════════════════════════════════════════════
+
+let _invSortKey = 'createdAt';
+let _invSortDir = 'desc';
+
+function renderInventory() {
+  const items = load('inventory', []);
+
+  const q    = (document.getElementById('inv-search')?.value || '').toLowerCase();
+  const cat  = document.getElementById('inv-filter-category')?.value || '';
+  const loc  = document.getElementById('inv-filter-location')?.value || '';
+
+  let filtered = items.filter(it => {
+    const matchQ = !q || [it.item, it.notes, it.category, it.location]
+      .some(f => (f||'').toLowerCase().includes(q));
+    const matchCat = !cat || it.category === cat;
+    const matchLoc = !loc || it.location === loc;
+    return matchQ && matchCat && matchLoc;
+  });
+
+  // Sort
+  filtered.sort((a, b) => {
+    let av = a[_invSortKey] ?? '', bv = b[_invSortKey] ?? '';
+    if (_invSortKey === 'quantity') { av = Number(av); bv = Number(bv); }
+    else { av = String(av).toLowerCase(); bv = String(bv).toLowerCase(); }
+    if (av < bv) return _invSortDir === 'asc' ? -1 : 1;
+    if (av > bv) return _invSortDir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  // Update count badge
+  const badge = document.getElementById('inv-count-badge');
+  if (badge) badge.textContent = items.length + (items.length === 1 ? ' item' : ' items');
+
+  // Update sort indicators
+  document.querySelectorAll('#inv-table th.sortable').forEach(th => {
+    th.classList.remove('sort-asc', 'sort-desc');
+  });
+  const sortColMap = { quantity: 0, item: 1, category: 2, location: 3, createdAt: 6 };
+  const activeTh = document.querySelectorAll('#inv-table th.sortable')[
+    [0,1,2,3,6].indexOf(sortColMap[_invSortKey])
+  ];
+  if (activeTh) activeTh.classList.add(_invSortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+
+  // Resolve deals for source lookup
+  const deals = load('active_deals', []);
+  const dealMap = {};
+  deals.forEach(d => { dealMap[d.id] = d.address || d.id; });
+
+  const tbody = document.getElementById('inv-tbody');
+  if (!tbody) return;
+
+  if (filtered.length === 0) {
+    const msg = items.length === 0
+      ? `<div class="inv-empty"><div class="inv-empty-icon">📦</div><div style="font-size:1.05rem;color:var(--white);margin-bottom:8px;">No inventory yet.</div><div style="margin-bottom:18px;">Add your first item to get started.</div><button class="btn btn-gold" onclick="openInventoryModal()">+ Add Item</button></div>`
+      : `<div class="inv-empty"><div class="inv-empty-icon">🔍</div><div style="font-size:1.05rem;color:var(--white);">No items match your filters.</div></div>`;
+    tbody.innerHTML = `<tr><td colspan="8">${msg}</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(it => {
+    const qty = `<span class="inv-qty-cell">${it.quantity}</span>${it.unit ? `<span class="inv-unit">${it.unit}</span>` : ''}`;
+    const catTag = `<span class="inv-category-tag">${it.category}</span>`;
+    const deal = it.sourceDealId && dealMap[it.sourceDealId]
+      ? `<span style="font-size:0.8rem;color:var(--silver);">${dealMap[it.sourceDealId]}</span>`
+      : '<span style="color:var(--text-muted);">—</span>';
+    const notes = it.notes
+      ? `<span class="inv-notes-cell" title="${(it.notes||'').replace(/"/g,'&quot;')}">${it.notes}</span>`
+      : '<span style="color:var(--text-muted);">—</span>';
+    const created = it.createdAt
+      ? new Date(it.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
+      : '—';
+    return `<tr>
+      <td>${qty}</td>
+      <td><strong>${it.item}</strong></td>
+      <td>${catTag}</td>
+      <td>${it.location}</td>
+      <td>${deal}</td>
+      <td>${notes}</td>
+      <td style="color:var(--text-muted);font-size:0.8rem;">${created}</td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-sm btn-outline" onclick="openInventoryModal('${it.id}')" style="padding:2px 10px;font-size:0.75rem;margin-right:4px;">✏️ Edit</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function invSort(key) {
+  if (_invSortKey === key) {
+    _invSortDir = _invSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    _invSortKey = key;
+    _invSortDir = key === 'createdAt' ? 'desc' : 'asc';
+  }
+  renderInventory();
+}
+
+function openInventoryModal(id) {
+  const deals = load('active_deals', []);
+  const sel = document.getElementById('inv-source-deal');
+  if (sel) {
+    sel.innerHTML = '<option value="">(none)</option>' +
+      deals.map(d => `<option value="${d.id}">${d.address || d.id}</option>`).join('');
+  }
+
+  const deleteBtn = document.getElementById('inv-delete-btn');
+  const titleEl   = document.getElementById('inv-modal-title');
+
+  if (id) {
+    // Edit mode
+    const items = load('inventory', []);
+    const it = items.find(x => x.id === id);
+    if (!it) return;
+    document.getElementById('inv-edit-id').value = id;
+    document.getElementById('inv-qty').value      = it.quantity;
+    document.getElementById('inv-unit').value     = it.unit || '';
+    document.getElementById('inv-item').value     = it.item || '';
+    document.getElementById('inv-category').value = it.category || '';
+    document.getElementById('inv-location').value = it.location || '';
+    document.getElementById('inv-notes').value    = it.notes || '';
+    if (sel) sel.value = it.sourceDealId || '';
+    if (titleEl) titleEl.textContent = 'Edit Inventory Item';
+    if (deleteBtn) deleteBtn.style.display = 'inline-flex';
+  } else {
+    // Add mode
+    document.getElementById('inv-edit-id').value  = '';
+    document.getElementById('inv-qty').value       = '';
+    document.getElementById('inv-unit').value      = '';
+    document.getElementById('inv-item').value      = '';
+    document.getElementById('inv-category').value  = '';
+    document.getElementById('inv-location').value  = '';
+    document.getElementById('inv-notes').value     = '';
+    if (sel) sel.value = '';
+    if (titleEl) titleEl.textContent = 'Add Inventory Item';
+    if (deleteBtn) deleteBtn.style.display = 'none';
+  }
+
+  openModal('modal-inventory');
+  setTimeout(() => document.getElementById('inv-qty')?.focus(), 80);
+}
+
+function invLocationChanged() {
+  const loc = document.getElementById('inv-location')?.value;
+  if (loc === 'Other') {
+    setTimeout(() => document.getElementById('inv-notes')?.focus(), 50);
+  }
+}
+
+function saveInventoryItem() {
+  const qty  = parseInt(document.getElementById('inv-qty')?.value, 10);
+  const item = (document.getElementById('inv-item')?.value || '').trim();
+  const cat  = document.getElementById('inv-category')?.value || '';
+  const loc  = document.getElementById('inv-location')?.value || '';
+
+  if (!qty || qty < 1)  { toast('⚠️ Quantity is required (must be ≥ 1).'); return; }
+  if (!item)            { toast('⚠️ Item name is required.'); return; }
+  if (!cat)             { toast('⚠️ Please select a category.'); return; }
+  if (!loc)             { toast('⚠️ Please select a location.'); return; }
+
+  const unit    = document.getElementById('inv-unit')?.value || '';
+  const notes   = (document.getElementById('inv-notes')?.value || '').trim();
+  const dealId  = document.getElementById('inv-source-deal')?.value || '';
+  const editId  = document.getElementById('inv-edit-id')?.value || '';
+
+  const items = load('inventory', []);
+
+  if (editId) {
+    // Update existing
+    const idx = items.findIndex(x => x.id === editId);
+    if (idx >= 0) {
+      items[idx] = { ...items[idx], quantity: qty, unit, item, category: cat,
+        location: loc, notes, sourceDealId: dealId };
+    }
+    toast('✅ Item updated.');
+  } else {
+    // New item
+    const newItem = {
+      id: 'inv_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+      quantity: qty, unit, item, category: cat,
+      location: loc, notes, sourceDealId: dealId,
+      createdAt: new Date().toISOString()
+    };
+    items.unshift(newItem);
+    toast('✅ Item added to inventory.');
+  }
+
+  save('inventory', items);
+  closeModal('modal-inventory');
+  renderInventory();
+}
+
+function deleteInventoryItem() {
+  const id = document.getElementById('inv-edit-id')?.value;
+  if (!id) return;
+  if (!confirm('Delete this inventory item? This cannot be undone.')) return;
+  const items = load('inventory', []).filter(x => x.id !== id);
+  save('inventory', items);
+  closeModal('modal-inventory');
+  renderInventory();
+  toast('🗑 Item deleted.');
+}
+
 </script>
 
 <!-- Gmail Compose Modal -->
