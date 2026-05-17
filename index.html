@@ -4153,7 +4153,7 @@ function renderDealExpenses(d) {
   var budgets = {};
   EXP_LINE_ITEMS.forEach(function(li) {
     budgets[li.name] = (d.expBudgets && d.expBudgets[li.name] !== undefined)
-      ? d.expBudgets[li.name] : li.budget;
+      ? d.expBudgets[li.name] : 0;
   });
 
   // Aggregate spending per line item
@@ -4419,7 +4419,7 @@ function unlinkQualEfi() {
   delete d.linkedQEDeal;
   // Reset budgets to defaults
   d.expBudgets = {};
-  EXP_LINE_ITEMS.forEach(function(li){ d.expBudgets[li.name] = li.budget; });
+  EXP_LINE_ITEMS.forEach(function(li){ d.expBudgets[li.name] = 0; });
   save('active_deals', deals);
   renderDealExpenses(d);
   toast('Qual-Efi link removed. Budgets reset to defaults.');
