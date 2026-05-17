@@ -379,6 +379,7 @@ const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/gmail.send',
   'https://www.googleapis.com/auth/gmail.modify',
   'https://www.googleapis.com/auth/calendar',
+  'https://www.googleapis.com/auth/drive.file',
 ];
 
 function makeOAuth2Client(req) {
@@ -1221,6 +1222,7 @@ function scheduleNovabooksSync() {
 }
 
 scheduleNovabooksSync();
+scheduleWeeklyBackup();
 
 // ── Manual sync endpoint ─────────────────────────────────────────────────────
 app.post('/api/nb/sync', async (req, res) => {
@@ -1818,6 +1820,186 @@ app.post('/api/ext/nestimate', requireApiKey, async (req, res) => {
 
     res.json({ ok: true, contactId: contact.id });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Weekly Turso backup ───────────────────────────────────────────────────────
+
+const BACKUP_FOLDER_NAME  = 'Novacor Backups';
+const BACKUP_RETAIN_WEEKS = 8;
+const BACKUP_RECIPIENT    = 'novacor.icaz@gmail.com';
+
+async function getDriveClient() {
+  // Re-use the stored Google token from the kv table (same pattern as Novabooks)
+  const row = await db.execute({ sql: 'SELECT value FROM kv WHERE key=?', args: ['nc_google_token'] });
+  if (!row.rows.length) throw new Error('No Google token stored — re-authenticate via /auth/google');
+  const token = JSON.parse(row.rows[0].value);
+  const auth = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET);
+  auth.setCredentials(token);
+  return google.drive({ version: 'v3', auth });
+}
+
+async function ensureBackupFolder(drive) {
+  const list = await drive.files.list({
+    q: `name='${BACKUP_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+    fields: 'files(id)',
+    spaces: 'drive',
+  });
+  if (list.data.files.length > 0) return list.data.files[0].id;
+  const folder = await drive.files.create({
+    requestBody: { name: BACKUP_FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder' },
+    fields: 'id',
+  });
+  return folder.data.id;
+}
+
+async function runWeeklyBackup(req) {
+  const drive = await getDriveClient();
+
+  // 1. Export the kv table as NDJSON
+  const result = await db.execute('SELECT key, value FROM kv ORDER BY key');
+  const rows = result.rows.map(r => JSON.stringify({ key: r.key, value: r.value })).join('\n');
+  const now = new Date();
+  // Arizona MST = UTC-7 always
+  const mst = new Date(now.getTime() - 7 * 60 * 60 * 1000);
+  const stamp = mst.toISOString().slice(0, 10); // YYYY-MM-DD
+  const fileName = `novacor-kv-backup-${stamp}.ndjson`;
+
+  // 2. Ensure backup folder exists and upload file
+  const folderId = await ensureBackupFolder(drive);
+  const { Readable } = await import('stream');
+  const uploaded = await drive.files.create({
+    requestBody: { name: fileName, parents: [folderId] },
+    media: { mimeType: 'application/x-ndjson', body: Readable.from([rows]) },
+    fields: 'id,name,size',
+  });
+  const fileId = uploaded.data.id;
+
+  console.log(`[Backup] Uploaded ${fileName} (id=${fileId})`);
+
+  // 3. Prune backups older than BACKUP_RETAIN_WEEKS
+  const allFiles = await drive.files.list({
+    q: `'${folderId}' in parents and trashed=false`,
+    fields: 'files(id,name,createdTime)',
+    orderBy: 'createdTime',
+    spaces: 'drive',
+  });
+  const files = allFiles.data.files;
+  const cutoff = new Date(now.getTime() - BACKUP_RETAIN_WEEKS * 7 * 24 * 60 * 60 * 1000);
+  const deleted = [];
+  for (const f of files) {
+    if (new Date(f.createdTime) < cutoff) {
+      await drive.files.delete({ fileId: f.id });
+      deleted.push(f.name);
+      console.log(`[Backup] Pruned old backup: ${f.name}`);
+    }
+  }
+
+  // 4. Send summary email
+  const kvCount = result.rows.length;
+  const subject = `Novacor Weekly Backup — ${stamp}`;
+  const bodyLines = [
+    `Weekly Turso backup complete.`,
+    ``,
+    `File: ${fileName}`,
+    `Rows exported: ${kvCount}`,
+    `Google Drive folder: ${BACKUP_FOLDER_NAME}`,
+    deleted.length > 0
+      ? `Pruned ${deleted.length} old backup(s): ${deleted.join(', ')}`
+      : `No old backups pruned (retention window: ${BACKUP_RETAIN_WEEKS} weeks).`,
+  ];
+  const emailBody = bodyLines.join('\n');
+
+  const authClient = req ? await getAuthedClient(req) : await getDriveClient().then(() => null);
+  // Build gmail client using same stored token
+  const tokenRow = await db.execute({ sql: 'SELECT value FROM kv WHERE key=?', args: ['nc_google_token'] });
+  const token = JSON.parse(tokenRow.rows[0].value);
+  const gmailAuth = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET);
+  gmailAuth.setCredentials(token);
+  const gmail = google.gmail({ version: 'v1', auth: gmailAuth });
+
+  const raw = [
+    `To: ${BACKUP_RECIPIENT}`,
+    `Subject: ${subject}`,
+    `Content-Type: text/plain; charset=utf-8`,
+    ``,
+    emailBody,
+  ].join('\r\n');
+  const encoded = Buffer.from(raw).toString('base64url');
+  await gmail.users.messages.send({ userId: 'me', requestBody: { raw: encoded } });
+  console.log(`[Backup] Summary email sent to ${BACKUP_RECIPIENT}`);
+
+  return { fileName, kvCount, deleted };
+}
+
+function scheduleWeeklyBackup() {
+  function msUntilNextMonday7am() {
+    const MST_OFFSET_MS = 7 * 60 * 60 * 1000;
+    const now = new Date();
+    const nowMSTms = now.getTime() - MST_OFFSET_MS;
+    const nowMST = new Date(nowMSTms);
+    const day = nowMST.getUTCDay();
+    const hour = nowMST.getUTCHours();
+    let daysUntil;
+    if (day === 1 && hour < 7) { daysUntil = 0; }
+    else if (day === 1) { daysUntil = 7; }
+    else { daysUntil = (8 - day) % 7; }
+    const targetMST = new Date(nowMST);
+    targetMST.setUTCDate(targetMST.getUTCDate() + daysUntil);
+    targetMST.setUTCHours(7, 0, 0, 0);
+    const targetUTC = targetMST.getTime() + MST_OFFSET_MS;
+    const ms = targetUTC - now.getTime();
+    return Math.max(ms, 60 * 1000);
+  }
+
+  function scheduleNext() {
+    const ms = msUntilNextMonday7am();
+    console.log(`[Backup] Next backup scheduled in ${Math.round(ms / 1000 / 60 / 60)} hours`);
+    setTimeout(async () => {
+      try {
+        await runWeeklyBackup(null);
+      } catch (e) {
+        console.error('[Backup] runWeeklyBackup failed:', e.message);
+        // Send failure notification
+        try {
+          const tokenRow = await db.execute({ sql: 'SELECT value FROM kv WHERE key=?', args: ['nc_google_token'] });
+          if (tokenRow.rows.length) {
+            const token = JSON.parse(tokenRow.rows[0].value);
+            const gmailAuth = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET);
+            gmailAuth.setCredentials(token);
+            const gmail = google.gmail({ version: 'v1', auth: gmailAuth });
+            const now = new Date();
+            const mst = new Date(now.getTime() - 7 * 60 * 60 * 1000);
+            const stamp = mst.toISOString().slice(0, 10);
+            const raw = [
+              `To: ${BACKUP_RECIPIENT}`,
+              `Subject: Novacor Backup FAILED — ${stamp}`,
+              `Content-Type: text/plain; charset=utf-8`,
+              ``,
+              `The weekly Turso backup failed with the following error:\n\n${e.message}`,
+            ].join('\r\n');
+            const encoded = Buffer.from(raw).toString('base64url');
+            await gmail.users.messages.send({ userId: 'me', requestBody: { raw: encoded } });
+          }
+        } catch (mailErr) {
+          console.error('[Backup] Failed to send failure email:', mailErr.message);
+        }
+      }
+      scheduleNext();
+    }, ms);
+  }
+
+  scheduleNext();
+}
+
+// ── Manual backup endpoint ────────────────────────────────────────────────────
+app.post('/api/backup/run-now', requireAuth, async (req, res) => {
+  try {
+    const result = await runWeeklyBackup(req);
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    console.error('[Backup] Manual run failed:', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
