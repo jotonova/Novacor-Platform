@@ -1659,7 +1659,6 @@ app.post('/api/guest-history', async (req, res) => {
 function requireApiKey(req, res, next) {
   const key = req.headers['x-api-key'] || req.query.api_key;
   const validKey = process.env.NOVABOOKS_API_KEY;
-  console.log('[Auth] received key length:', (key || '').length, 'valid key length:', (validKey || '').length, 'match:', key === validKey);
   if (!validKey || key !== validKey) return res.status(401).json({ error: 'Unauthorized' });
   next();
 }
