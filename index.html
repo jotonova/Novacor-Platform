@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NovaCor LLC — Business Platform</title>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Barlow:wght@300;400;500;600&family=Barlow+Condensed:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
 <style>
 :root {
   --navy: #0d1f3c;
@@ -2678,6 +2680,12 @@ th.sort-desc::after { content: ' ▼'; font-size: 0.6em; }
     </div>
   </div>
   <div class="deal-detail-hero" id="deal-detail-hero"><span>No photo uploaded</span></div>
+  <div id="deal-photo-actions" style="display:flex;gap:8px;padding:6px 12px;background:rgba(13,31,60,0.85);border-bottom:1px solid var(--border);">
+    <button class="btn btn-sm btn-outline" onclick="openDealPhotoReplace()" style="color:var(--gold);border-color:rgba(201,168,76,0.4);">📤 Replace</button>
+    <button class="btn btn-sm btn-outline" id="deal-photo-btn-edit" onclick="openDealPhotoEdit()" style="color:var(--gold);border-color:rgba(201,168,76,0.4);">✂️ Edit</button>
+    <button class="btn btn-sm btn-outline" id="deal-photo-btn-delete" onclick="deleteDealPhoto()" style="color:#ef4444;border-color:rgba(239,68,68,0.4);">🗑️ Delete</button>
+    <input type="file" id="deal-photo-file-input" accept="image/*" style="display:none;" onchange="_onDealPhotoFileSelected(this)">
+  </div>
   <div class="deal-fields" id="deal-detail-fields"></div>
   <div class="deal-sub-tabs" id="deal-sub-tabs">
     <button class="deal-sub-tab active" onclick="switchDealTab('expenses')">💸 Expenses</button>
@@ -4033,16 +4041,27 @@ function openDealDetail(id) {
   const hero = document.getElementById('deal-detail-hero');
   if(d.photo) {
     hero.innerHTML = `<img src="${d.photo}" alt="${d.address}" style="width:100%;height:100%;object-fit:cover;">`;
+    updateDealPhotoActions(true);
   } else if(d.photoKey) {
     hero.innerHTML = '<span style="color:var(--text-muted);font-size:0.8rem;">Loading photo...</span>';
+    updateDealPhotoActions(false);
     fetch('/api/store/nc_' + d.photoKey).then(r=>r.json()).then(r=>{
       let src = r.value;
       if(typeof src === 'string' && src.startsWith('"')) { try { src = JSON.parse(src); } catch(e) {} }
-      if(src) hero.innerHTML = `<img src="${src}" alt="${d.address}" style="width:100%;height:100%;object-fit:cover;">`;
-      else hero.innerHTML = '<span>No photo uploaded</span>';
-    }).catch(()=>{ hero.innerHTML = '<span>No photo uploaded</span>'; });
+      if(src) {
+        hero.innerHTML = `<img src="${src}" alt="${d.address}" style="width:100%;height:100%;object-fit:cover;">`;
+        updateDealPhotoActions(true);
+      } else {
+        hero.innerHTML = '<span>No photo uploaded</span>';
+        updateDealPhotoActions(false);
+      }
+    }).catch(()=>{
+      hero.innerHTML = '<span>No photo uploaded</span>';
+      updateDealPhotoActions(false);
+    });
   } else {
     hero.innerHTML = '<span>No photo uploaded</span>';
+    updateDealPhotoActions(false);
   }
 
   document.getElementById('deal-detail-fields').innerHTML = `
@@ -8452,7 +8471,136 @@ function deleteInventoryItem() {
     };
   }
 })();
+
+// ── Deal Photo Management ─────────────────────────────────────────────────────
+
+function _dealPhotoNcKey(d) {
+  // Returns the full storage key (with nc_ prefix) for this deal's photo
+  const pk = d.photoKey || ('deal_photo_' + d.id);
+  return 'nc_' + pk;
+}
+
+function updateDealPhotoActions(hasPhoto) {
+  const edit = document.getElementById('deal-photo-btn-edit');
+  const del  = document.getElementById('deal-photo-btn-delete');
+  if(edit) edit.style.display = hasPhoto ? '' : 'none';
+  if(del)  del.style.display  = hasPhoto ? '' : 'none';
+}
+
+function openDealPhotoReplace() {
+  document.getElementById('deal-photo-file-input').click();
+}
+
+function _onDealPhotoFileSelected(input) {
+  const file = input.files[0];
+  if(!file) return;
+  input.value = ''; // reset so same file can be re-selected
+  const reader = new FileReader();
+  reader.onload = function(e) { openCropModal(e.target.result); };
+  reader.readAsDataURL(file);
+}
+
+function openDealPhotoEdit() {
+  const img = document.querySelector('#deal-detail-hero img');
+  if(!img || !img.src) return;
+  openCropModal(img.src);
+}
+
+async function deleteDealPhoto() {
+  if(!confirm('Delete photo from this deal? This cannot be undone.')) return;
+  const deals = load('active_deals', []);
+  const d = deals.find(x => x.id === currentDealId);
+  if(!d) return;
+  const ncKey = _dealPhotoNcKey(d);
+
+  await fetch('/api/store/' + ncKey, { method: 'DELETE' }).catch(() => {});
+  delete _cache[ncKey];
+  if(d.photo) d.photo = '';
+  save('active_deals', deals);
+
+  document.getElementById('deal-detail-hero').innerHTML = '<span>No photo uploaded</span>';
+  updateDealPhotoActions(false);
+  toast('🗑️ Photo deleted');
+}
+
+var _cropperInstance = null;
+
+function openCropModal(src) {
+  const modal   = document.getElementById('modal-photo-crop');
+  const cropImg = document.getElementById('crop-modal-image');
+  if(_cropperInstance) { _cropperInstance.destroy(); _cropperInstance = null; }
+  cropImg.src = src;
+  modal.classList.remove('hidden');
+  // Delay init until the image element has rendered
+  setTimeout(function() {
+    _cropperInstance = new Cropper(cropImg, {
+      aspectRatio: 16 / 9,
+      viewMode: 1,
+      autoCropArea: 0.9,
+    });
+  }, 100);
+}
+
+function rotateDealPhotoCrop() {
+  if(_cropperInstance) _cropperInstance.rotate(90);
+}
+
+function closeCropModal() {
+  document.getElementById('modal-photo-crop').classList.add('hidden');
+  if(_cropperInstance) { _cropperInstance.destroy(); _cropperInstance = null; }
+}
+
+async function saveDealCrop() {
+  if(!_cropperInstance) return;
+  const deals = load('active_deals', []);
+  const d = deals.find(x => x.id === currentDealId);
+  if(!d) { closeCropModal(); return; }
+
+  const canvas  = _cropperInstance.getCroppedCanvas({ maxWidth: 1200 });
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+
+  // Ensure photoKey is set on the deal record
+  if(!d.photoKey) d.photoKey = 'deal_photo_' + d.id;
+  const ncKey = 'nc_' + d.photoKey;
+
+  await fetch('/api/store/' + ncKey, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ value: dataUrl })
+  }).catch(() => {});
+
+  _cache[ncKey] = dataUrl;
+  if(d.photo) d.photo = ''; // clear any legacy inline photo
+  save('active_deals', deals);
+
+  const hero = document.getElementById('deal-detail-hero');
+  hero.innerHTML = `<img src="${dataUrl}" alt="" style="width:100%;height:100%;object-fit:cover;">`;
+  updateDealPhotoActions(true);
+  closeCropModal();
+  toast('📸 Photo saved!');
+}
+
 </script>
+
+<!-- Photo Crop Modal -->
+<div class="modal-overlay hidden" id="modal-photo-crop" style="z-index:9999;">
+  <div class="modal" style="max-width:820px;width:96vw;">
+    <div class="modal-header">
+      <div class="modal-title">✂️ Crop Photo (16:9)</div>
+      <button class="modal-close" onclick="closeCropModal()">✕</button>
+    </div>
+    <div style="background:#000;padding:8px;max-height:58vh;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+      <img id="crop-modal-image" style="max-width:100%;max-height:55vh;display:block;">
+    </div>
+    <div style="padding:12px 16px;display:flex;gap:8px;justify-content:space-between;align-items:center;border-top:1px solid var(--border);">
+      <button class="btn btn-sm btn-outline" onclick="rotateDealPhotoCrop()" style="color:var(--gold);border-color:rgba(201,168,76,0.4);">↻ Rotate 90°</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-sm btn-outline" onclick="closeCropModal()">Cancel</button>
+        <button class="btn btn-sm btn-gold" onclick="saveDealCrop()">Save Crop</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>
