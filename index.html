@@ -4098,6 +4098,8 @@ function switchDealTab(tab) {
   document.getElementById('deal-tab-'+tab).classList.add('active');
 }
 
+var QE_KEY='novacor_qe_deals_v1';
+
 // Budget line items with default budgets from 4455 Roosevelt
 var EXP_LINE_ITEMS = [
   {name:'HVAC/Mini Split', budget:0},
@@ -6528,7 +6530,6 @@ window.qeResetThresh = function() {
 };
 
 // SAVE / LOAD
-const QE_KEY='novacor_qe_deals_v1';
 function qeGetDeals(){ return _cache[QE_KEY] || []; }
 function qeSaveDeals(d){
   _cache[QE_KEY]=d;
