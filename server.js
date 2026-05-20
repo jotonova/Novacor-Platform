@@ -1822,6 +1822,456 @@ app.post('/api/ext/nestimate', requireApiKey, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Nyx External API (/api/ext/nyx/*) ────────────────────────────────────────
+// Read-only REST surface for Nyx (AI Chief of Staff). Auth: NYX_API_KEY header.
+// /api/ext/* is already exempt from the passcode requireAuth middleware above.
+
+function requireNyxKey(req, res, next) {
+  const key = req.headers['x-api-key'];
+  if (!key || key !== process.env.NYX_API_KEY) return res.status(401).json({ error: 'Unauthorized' });
+  next();
+}
+
+// Permissive CORS for all /api/ext/nyx/* routes; OPTIONS handled before key check
+app.use('/api/ext/nyx', (req, res, next) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Headers', 'x-api-key, Content-Type');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
+// ── Shared helpers ────────────────────────────────────────────────────────────
+
+function nyxStripDeal(d) {
+  const { photo, photoKey, ...deal } = d;
+  return {
+    ...deal,
+    expenses: (deal.expenses || []).map(({ files, receiptRefs, ...e }) => e),
+  };
+}
+
+async function nyxKvLoad(key, defaultVal = null) {
+  const r = await db.execute({ sql: 'SELECT value FROM kv WHERE key=?', args: [key] });
+  return r.rows.length ? JSON.parse(r.rows[0].value) : defaultVal;
+}
+
+// Normalize NB "M-D-YYYY" or standard "YYYY-MM-DD" → "YYYY-MM-DD"
+function nyxNormalizeDate(s) {
+  if (!s) return null;
+  if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(s)) {
+    const [m, d, y] = s.split('-');
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+  return s.slice(0, 10);
+}
+
+// NB summary for a given year (mirrors /api/nb/summary logic)
+async function nyxNbSummary(year) {
+  const y = year || new Date().getFullYear().toString();
+  const txns = await db.execute({
+    sql: "SELECT type, category, amount FROM nb_transactions WHERE strftime('%Y',date)=?",
+    args: [y],
+  });
+  let totalIncome = 0, totalExpenses = 0;
+  const byCategory = {};
+  for (const t of txns.rows) {
+    if (t.type === 'income') totalIncome += t.amount;
+    else { totalExpenses += t.amount; byCategory[t.category] = (byCategory[t.category] || 0) + t.amount; }
+  }
+  const netProfit = totalIncome - totalExpenses;
+  return {
+    year: y, totalIncome, totalExpenses, netProfit,
+    estimatedTaxOwed: netProfit > 0 ? netProfit * 0.9235 * 0.153 + netProfit * 0.22 : 0,
+    byCategory,
+  };
+}
+
+// Proxy a CL ext path — returns null if unreachable or CLAB_API_KEY not set
+async function nyxCallClab(path) {
+  const key = process.env.CLAB_API_KEY;
+  if (!key) return null;
+  try {
+    const r = await fetch(`https://novacor-conversion-lab.onrender.com/api/ext${path}`, {
+      headers: { 'x-api-key': key },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch {
+    return null;
+  }
+}
+
+// Shared rollup used by /weekly-summary and /daily-summary
+async function nyxBuildSummary(days) {
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+  const windowStartStr = new Date(now.getTime() - days * 86400000).toISOString().slice(0, 10);
+  const windowEndStr = new Date(now.getTime() + days * 86400000).toISOString().slice(0, 10);
+
+  // Deals
+  const activeDeals = await nyxKvLoad('nc_active_deals', []);
+  const byStatus = {};
+  for (const d of activeDeals) byStatus[d.status] = (byStatus[d.status] || 0) + 1;
+  const dealsDetail = activeDeals.map(d => {
+    const totalSpent = (d.expenses || []).reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+    const budget = Object.values(d.expBudgets || {}).reduce((s, v) => s + (Number(v) || 0), 0);
+    return { address: d.address, status: d.status, arv: d.arv, totalSpent, budgetRemaining: budget - totalSpent };
+  });
+
+  // Money — YTD summary + window expenses (JS-filtered to handle M-D-YYYY dates)
+  const nbSummary = await nyxNbSummary(null);
+  const allExpTxns = await db.execute({ sql: "SELECT amount, date FROM nb_transactions WHERE type='expense'", args: [] });
+  let expensesThisWindow = 0;
+  for (const t of allExpTxns.rows) {
+    const d = nyxNormalizeDate(t.date);
+    if (d && d >= windowStartStr) expensesThisWindow += t.amount;
+  }
+  const topCategoriesYTD = Object.entries(nbSummary.byCategory)
+    .sort((a, b) => b[1] - a[1]).slice(0, 5)
+    .reduce((o, [k, v]) => { o[k] = v; return o; }, {});
+
+  // Leads from CL
+  const clabLeads = await nyxCallClab('/leads');
+  let leadsSummary;
+  if (!clabLeads) {
+    leadsSummary = { available: false };
+  } else {
+    const newThisWindow = clabLeads.filter(l => l.added && l.added >= windowStartStr).length;
+    const topScored = [...clabLeads]
+      .sort((a, b) => (b.ai_score || 0) - (a.ai_score || 0)).slice(0, 5)
+      .map(l => ({ id: l.id, address: l.address, ai_score: l.ai_score, status: l.status }));
+    leadsSummary = { available: true, totalLeads: clabLeads.length, newThisWindow, topScored };
+  }
+
+  // Tasks
+  const taskR = await db.execute({ sql: "SELECT * FROM tasks WHERE status='pending'", args: [] });
+  let pendingCount = 0, overdueCount = 0;
+  const dueThisWindow = [];
+  for (const t of taskR.rows) {
+    pendingCount++;
+    if (t.due_date && t.due_date < todayStr) overdueCount++;
+    if (t.due_date && t.due_date >= todayStr && t.due_date <= windowEndStr)
+      dueThisWindow.push({ id: t.id, title: t.title, due_date: t.due_date });
+  }
+
+  // Closed deals
+  const closedDeals = await nyxKvLoad('closed_deals', []);
+  const yearStr = now.getFullYear().toString();
+  const closedYTD = closedDeals.filter(d => (d.closedDate || '').startsWith(yearStr));
+  const totalProfitYTD = closedYTD.reduce((s, d) =>
+    s + (parseFloat(d.soldPrice || 0) - parseFloat(d.price || 0) - parseFloat(d.rehab || 0)), 0);
+
+  return {
+    generatedAt: now.toISOString(),
+    windowDays: days,
+    deals: { activeCount: activeDeals.length, byStatus, active: dealsDetail },
+    money: { ytdIncome: nbSummary.totalIncome, ytdExpenses: nbSummary.totalExpenses, ytdNetProfit: nbSummary.netProfit, expensesThisWindow, topCategoriesYTD },
+    leads: leadsSummary,
+    tasks: { pendingCount, overdueCount, dueThisWindow },
+    closedDeals: { countYTD: closedYTD.length, totalProfitYTD },
+  };
+}
+
+// ── Task 12: Health + Manifest ────────────────────────────────────────────────
+
+app.get('/api/ext/nyx/health', (req, res) => {
+  res.json({ ok: true, service: 'pro-vision', scope: 'nyx', version: '2026-05-20' });
+});
+
+app.get('/api/ext/nyx/manifest', requireNyxKey, (req, res) => {
+  res.json({
+    service: 'pro-vision', scope: 'nyx',
+    baseUrl: 'https://novacor-platform.onrender.com',
+    auth: 'x-api-key header (NYX_API_KEY)',
+    endpoints: [
+      { path: '/api/ext/nyx/health',           auth: false, description: 'Liveness check — no key required' },
+      { path: '/api/ext/nyx/manifest',          auth: true,  description: 'This endpoint list' },
+      { path: '/api/ext/nyx/deals',             auth: true,  description: 'All active deals (nc_active_deals); photo/binary stripped' },
+      { path: '/api/ext/nyx/deals/:id',         auth: true,  description: 'Single active deal by id' },
+      { path: '/api/ext/nyx/deals/:id/expenses',auth: true,  description: 'Expenses array for one deal' },
+      { path: '/api/ext/nyx/qe-deals',          auth: true,  description: 'All Qual-EFI underwriting deals (novacor_qe_deals_v1)' },
+      { path: '/api/ext/nyx/qe-deals/:name',    auth: true,  description: 'Single QE deal by name (URL-encode spaces)' },
+      { path: '/api/ext/nyx/nb/transactions',   auth: true,  description: 'NovaBooks transactions; ?deal_id=, ?vendor= (substring)' },
+      { path: '/api/ext/nyx/nb/accounts',       auth: true,  description: 'NovaBooks accounts' },
+      { path: '/api/ext/nyx/nb/deals',          auth: true,  description: 'NovaBooks deals' },
+      { path: '/api/ext/nyx/nb/vendors',        auth: true,  description: 'NovaBooks vendors' },
+      { path: '/api/ext/nyx/nb/mileage',        auth: true,  description: 'NovaBooks mileage log; ?year=YYYY' },
+      { path: '/api/ext/nyx/nb/summary',        auth: true,  description: 'NovaBooks YTD summary; ?year=YYYY' },
+      { path: '/api/ext/nyx/contractors',       auth: true,  description: 'Contractor roster (nc_contractors)' },
+      { path: '/api/ext/nyx/crm',               auth: true,  description: 'CRM contacts (nc_crm_contacts)' },
+      { path: '/api/ext/nyx/inventory',         auth: true,  description: 'Inventory items (nc_inventory)' },
+      { path: '/api/ext/nyx/tasks',             auth: true,  description: 'Pro-Vision task store; ?status= filter' },
+      { path: '/api/ext/nyx/company',           auth: true,  description: 'Company safe fields: ein,formed,agent,bank,insurance,cpa' },
+      { path: '/api/ext/nyx/closed-deals',      auth: true,  description: 'Closed deals archive (closed_deals key; currently empty)' },
+      { path: '/api/ext/nyx/weekly-summary',    auth: true,  description: 'Aggregated weekly rollup; ?days=7 (default 7)' },
+      { path: '/api/ext/nyx/daily-summary',     auth: true,  description: 'Aggregated daily rollup (days=1 variant)' },
+      { path: '/api/ext/nyx/where-am-i-behind', auth: true,  description: 'Overdue tasks, stale leads, expense backlog, deals pending action' },
+      { path: '/api/ext/nyx/clab/leads',        auth: true,  description: 'Conversion-Lab leads (proxied)' },
+      { path: '/api/ext/nyx/clab/skiptrace',    auth: true,  description: 'Conversion-Lab skip-traced leads (proxied)' },
+      { path: '/api/ext/nyx/clab/letters',      auth: true,  description: 'Conversion-Lab letter campaigns (proxied)' },
+      { path: '/api/ext/nyx/clab/fello',        auth: true,  description: 'Conversion-Lab Fello-synced leads (proxied)' },
+      { path: '/api/ext/nyx/clab/harvests',     auth: true,  description: 'Conversion-Lab harvest runs (proxied)' },
+    ],
+  });
+});
+
+// ── Task 1: Deals ─────────────────────────────────────────────────────────────
+
+app.get('/api/ext/nyx/deals', requireNyxKey, async (req, res) => {
+  try {
+    res.json((await nyxKvLoad('nc_active_deals', [])).map(nyxStripDeal));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/ext/nyx/deals/:id', requireNyxKey, async (req, res) => {
+  try {
+    const deals = await nyxKvLoad('nc_active_deals', []);
+    const deal = deals.find(d => d.id === req.params.id);
+    if (!deal) return res.status(404).json({ error: 'Deal not found' });
+    res.json(nyxStripDeal(deal));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/ext/nyx/deals/:id/expenses', requireNyxKey, async (req, res) => {
+  try {
+    const deals = await nyxKvLoad('nc_active_deals', []);
+    const deal = deals.find(d => d.id === req.params.id);
+    if (!deal) return res.status(404).json({ error: 'Deal not found' });
+    res.json((deal.expenses || []).map(({ files, receiptRefs, ...e }) => e));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Task 2: Qual-EFI deals ────────────────────────────────────────────────────
+
+app.get('/api/ext/nyx/qe-deals', requireNyxKey, async (req, res) => {
+  try {
+    const deals = await nyxKvLoad('novacor_qe_deals_v1', []);
+    res.json(deals.map(d => ({ name: d.name, date: d.date, state: d.state })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/ext/nyx/qe-deals/:name', requireNyxKey, async (req, res) => {
+  try {
+    const name = decodeURIComponent(req.params.name);
+    const deals = await nyxKvLoad('novacor_qe_deals_v1', []);
+    const deal = deals.find(d => d.name === name);
+    if (!deal) return res.status(404).json({ error: 'QE deal not found' });
+    res.json({ name: deal.name, date: deal.date, state: deal.state });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Task 3: NovaBooks proxies (direct DB — no HTTP loopback) ──────────────────
+
+app.get('/api/ext/nyx/nb/transactions', requireNyxKey, async (req, res) => {
+  try {
+    const { deal_id, vendor } = req.query;
+    let sql = 'SELECT * FROM nb_transactions WHERE 1=1';
+    const args = [];
+    if (deal_id) { sql += ' AND deal_id=?'; args.push(deal_id); }
+    if (vendor)  { sql += ' AND LOWER(vendor) LIKE ?'; args.push(`%${vendor.toLowerCase()}%`); }
+    sql += ' ORDER BY date DESC, created_at DESC';
+    res.json((await db.execute({ sql, args })).rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/ext/nyx/nb/accounts', requireNyxKey, async (req, res) => {
+  try { res.json((await db.execute('SELECT * FROM nb_accounts ORDER BY created_at ASC')).rows); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/ext/nyx/nb/deals', requireNyxKey, async (req, res) => {
+  try { res.json((await db.execute('SELECT * FROM nb_deals ORDER BY created_at DESC')).rows); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/ext/nyx/nb/vendors', requireNyxKey, async (req, res) => {
+  try { res.json((await db.execute('SELECT * FROM nb_vendors ORDER BY name ASC')).rows); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/ext/nyx/nb/mileage', requireNyxKey, async (req, res) => {
+  try {
+    const { year } = req.query;
+    let sql = 'SELECT * FROM nb_mileage WHERE 1=1';
+    const args = [];
+    if (year) { sql += " AND strftime('%Y',date)=?"; args.push(year); }
+    sql += ' ORDER BY date DESC';
+    res.json((await db.execute({ sql, args })).rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/ext/nyx/nb/summary', requireNyxKey, async (req, res) => {
+  try { res.json(await nyxNbSummary(req.query.year || null)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Task 4: Contractors, CRM, Inventory ──────────────────────────────────────
+
+app.get('/api/ext/nyx/contractors', requireNyxKey, async (req, res) => {
+  try { res.json(await nyxKvLoad('nc_contractors', [])); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/ext/nyx/crm', requireNyxKey, async (req, res) => {
+  try { res.json(await nyxKvLoad('nc_crm_contacts', [])); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/ext/nyx/inventory', requireNyxKey, async (req, res) => {
+  try { res.json(await nyxKvLoad('nc_inventory', [])); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Task 5: Tasks ─────────────────────────────────────────────────────────────
+
+app.get('/api/ext/nyx/tasks', requireNyxKey, async (req, res) => {
+  try {
+    const { status } = req.query;
+    let sql = "SELECT * FROM tasks WHERE status!='deleted'";
+    const args = [];
+    if (status) { sql += ' AND status=?'; args.push(status); }
+    sql += ' ORDER BY due_date ASC, due_time ASC';
+    res.json((await db.execute({ sql, args })).rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Task 6: Company info (safe fields only) ───────────────────────────────────
+
+app.get('/api/ext/nyx/company', requireNyxKey, async (req, res) => {
+  try {
+    const info = await nyxKvLoad('nc_info_details', {});
+    const { ein = '', formed = '', agent = '', bank = '', insurance = '', cpa = '' } = info;
+    res.json({ ein, formed, agent, bank, insurance, cpa });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Task 7: Closed deals (key: closed_deals) ──────────────────────────────────
+
+app.get('/api/ext/nyx/closed-deals', requireNyxKey, async (req, res) => {
+  try {
+    const deals = await nyxKvLoad('closed_deals', []);
+    res.json(deals.map(d => {
+      const { photo, photoKey, ...rest } = d;
+      return { ...rest, expenses: (rest.expenses || []).map(({ files, receiptRefs, ...e }) => e) };
+    }));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Task 8 + 9: Weekly / Daily Summary ───────────────────────────────────────
+
+app.get('/api/ext/nyx/weekly-summary', requireNyxKey, async (req, res) => {
+  try {
+    const days = Math.max(1, Math.min(90, parseInt(req.query.days || '7', 10)));
+    res.json(await nyxBuildSummary(days));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/ext/nyx/daily-summary', requireNyxKey, async (req, res) => {
+  try { res.json(await nyxBuildSummary(1)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Task 10: Where Am I Behind ────────────────────────────────────────────────
+
+app.get('/api/ext/nyx/where-am-i-behind', requireNyxKey, async (req, res) => {
+  try {
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+    const days = Math.max(1, Math.min(90, parseInt(req.query.days || '7', 10)));
+    const windowStartStr = new Date(now.getTime() - days * 86400000).toISOString().slice(0, 10);
+
+    // Overdue and pending tasks
+    const taskR = await db.execute({ sql: "SELECT * FROM tasks WHERE status='pending'", args: [] });
+    const overdueTasks = [], pendingTasks = [];
+    for (const t of taskR.rows) {
+      if (t.due_date && t.due_date < todayStr) {
+        const daysOverdue = Math.floor((Date.parse(todayStr) - Date.parse(t.due_date)) / 86400000);
+        overdueTasks.push({ id: t.id, title: t.title, due_date: t.due_date, daysOverdue });
+      } else {
+        pendingTasks.push({ id: t.id, title: t.title, due_date: t.due_date });
+      }
+    }
+
+    // Stale leads from CL (Active status, added before window)
+    const clabLeads = await nyxCallClab('/leads');
+    let staleLeads;
+    if (!clabLeads) {
+      staleLeads = { available: false };
+    } else {
+      staleLeads = clabLeads
+        .filter(l => l.status === 'Active' && (!l.added || l.added < windowStartStr))
+        .map(l => ({ id: l.id, address: l.address, ai_score: l.ai_score, added: l.added }));
+    }
+
+    // Expense backlog — deal expenses with no matching NB transaction (amount ±$0.02, same date)
+    const activeDeals = await nyxKvLoad('nc_active_deals', []);
+    const txnR = await db.execute({ sql: 'SELECT amount, date FROM nb_transactions', args: [] });
+    const txnSet = new Set();
+    for (const t of txnR.rows) {
+      const nd = nyxNormalizeDate(t.date);
+      const base = Math.round(t.amount * 100);
+      for (let delta = -2; delta <= 2; delta++) txnSet.add(`${base + delta}|${nd}`);
+    }
+    const dealsWithUnsentExpenses = [];
+    for (const deal of activeDeals) {
+      const unsynced = (deal.expenses || []).filter(e => {
+        const nd = nyxNormalizeDate(e.date);
+        const amt = Math.round(parseFloat(e.amount || 0) * 100);
+        return !txnSet.has(`${amt}|${nd}`);
+      }).map(({ files, receiptRefs, ...e }) => e);
+      if (unsynced.length) dealsWithUnsentExpenses.push({ dealId: deal.id, address: deal.address, unsyncedExpenses: unsynced });
+    }
+
+    // Deals pending action — Pending status with no recent NB transaction
+    const nbTxnR = await db.execute({ sql: 'SELECT deal_id, date FROM nb_transactions WHERE deal_id IS NOT NULL', args: [] });
+    const recentNbDealIds = new Set();
+    for (const t of nbTxnR.rows) {
+      const nd = nyxNormalizeDate(t.date);
+      if (nd && nd >= windowStartStr) recentNbDealIds.add(t.deal_id);
+    }
+    const nbDealR = await db.execute({ sql: 'SELECT id, address FROM nb_deals', args: [] });
+    const addrToNbId = {};
+    for (const d of nbDealR.rows) addrToNbId[d.address.toLowerCase().trim()] = d.id;
+    const dealsPendingAction = activeDeals
+      .filter(d => (d.status || '').toLowerCase().includes('pending'))
+      .filter(d => {
+        const nbId = addrToNbId[d.address.toLowerCase().trim()];
+        return !nbId || !recentNbDealIds.has(nbId);
+      })
+      .map(d => ({ id: d.id, address: d.address, status: d.status }));
+
+    res.json({
+      generatedAt: now.toISOString(),
+      overdueTasks,
+      pendingTasks,
+      staleLeads,
+      expenseBacklog: { dealsWithUnsentExpenses },
+      dealsPendingAction,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Task 11: Conversion-Lab proxy ─────────────────────────────────────────────
+// Pro-Vision calls CL server-to-server using CLAB_API_KEY. Nyx never touches CL directly.
+// CL ext routes: /leads /skiptrace /letters /fello /harvests (confirmed from ext.js)
+
+for (const [slug, clabPath] of [
+  ['leads',     '/leads'],
+  ['skiptrace', '/skiptrace'],
+  ['letters',   '/letters'],
+  ['fello',     '/fello'],
+  ['harvests',  '/harvests'],
+]) {
+  app.get(`/api/ext/nyx/clab/${slug}`, requireNyxKey, async (req, res) => {
+    try {
+      const data = await nyxCallClab(clabPath);
+      if (data === null) return res.status(502).json({ error: 'Conversion-Lab unavailable or CLAB_API_KEY not configured' });
+      res.json(data);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+}
+
 // ── Weekly Turso backup ───────────────────────────────────────────────────────
 
 const BACKUP_FOLDER_NAME  = 'Novacor Backups';
