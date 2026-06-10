@@ -4619,7 +4619,7 @@ async function saveExpense() {
   // expenses added by the external API (receipt-sync) since the page loaded
   try {
     const _fresh = await fetch('/api/store/nc_active_deals').then(r => r.json());
-    if (_fresh && !_fresh.error) _cache['nc_active_deals'] = typeof _fresh === 'string' ? JSON.parse(_fresh) : _fresh;
+    if (_fresh && !_fresh.error) _cache['nc_active_deals'] = _fresh.value !== undefined ? JSON.parse(_fresh.value || '[]') : (typeof _fresh === 'string' ? JSON.parse(_fresh) : _fresh);
   } catch(e) { console.warn('[saveExpense] Could not refresh from Turso:', e.message); }
 
   // Handle editing an existing expense
@@ -4747,7 +4747,7 @@ async function deleteDealExpense(i) {
   // Re-fetch latest from Turso before delete to avoid clobbering API-added expenses
   try {
     const _fresh = await fetch('/api/store/nc_active_deals').then(r => r.json());
-    if (_fresh && !_fresh.error) _cache['nc_active_deals'] = typeof _fresh === 'string' ? JSON.parse(_fresh) : _fresh;
+    if (_fresh && !_fresh.error) _cache['nc_active_deals'] = _fresh.value !== undefined ? JSON.parse(_fresh.value || '[]') : (typeof _fresh === 'string' ? JSON.parse(_fresh) : _fresh);
   } catch(e) { console.warn('[deleteDealExpense] Could not refresh from Turso:', e.message); }
   const deals = load('active_deals', []);
   const d = deals.find(x=>x.id===currentDealId);
