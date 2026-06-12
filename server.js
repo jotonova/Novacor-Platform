@@ -1955,8 +1955,9 @@ async function nyxBuildSummary(days) {
       dueThisWindow.push({ id: t.id, title: t.title, due_date: t.due_date });
   }
 
-  // Closed deals
-  const closedDeals = await nyxKvLoad('closed_deals', []);
+  // Closed/Archived deals — unified store: active_deals filtered to status 'Archived'
+  const allDealsForClosed = await nyxKvLoad('nc_active_deals', []);
+  const closedDeals = allDealsForClosed.filter(d => (d.status || '').toLowerCase() === 'archived');
   const yearStr = now.getFullYear().toString();
   const closedYTD = closedDeals.filter(d => (d.closedDate || '').startsWith(yearStr));
   const totalProfitYTD = closedYTD.reduce((s, d) =>
@@ -2003,7 +2004,7 @@ app.get('/api/ext/nyx/manifest', requireNyxKey, (req, res) => {
       { path: '/api/ext/nyx/inventory',         auth: true,  description: 'Inventory items (nc_inventory)' },
       { path: '/api/ext/nyx/tasks',             auth: true,  description: 'Pro-Vision task store; ?status= filter' },
       { path: '/api/ext/nyx/company',           auth: true,  description: 'Company safe fields: ein,formed,agent,bank,insurance,cpa' },
-      { path: '/api/ext/nyx/closed-deals',      auth: true,  description: 'Closed deals archive (closed_deals key; currently empty)' },
+      { path: '/api/ext/nyx/closed-deals',      auth: true,  description: 'Archived deals (status=Archived in nc_active_deals; unified store)' },
       { path: '/api/ext/nyx/weekly-summary',    auth: true,  description: 'Aggregated weekly rollup; ?days=7 (default 7)' },
       { path: '/api/ext/nyx/daily-summary',     auth: true,  description: 'Aggregated daily rollup (days=1 variant)' },
       { path: '/api/ext/nyx/where-am-i-behind', auth: true,  description: 'Overdue tasks, stale leads, expense backlog, deals pending action' },
@@ -2146,11 +2147,14 @@ app.get('/api/ext/nyx/company', requireNyxKey, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Task 7: Closed deals (key: closed_deals) ──────────────────────────────────
+// ── Task 7: Closed/Archived deals — unified store ─────────────────────────────
+// Reads nc_active_deals and filters to status === 'Archived'.
+// The old closed_deals key is no longer the source of truth.
 
 app.get('/api/ext/nyx/closed-deals', requireNyxKey, async (req, res) => {
   try {
-    const deals = await nyxKvLoad('closed_deals', []);
+    const allDeals = await nyxKvLoad('nc_active_deals', []);
+    const deals = allDeals.filter(d => (d.status || '').toLowerCase() === 'archived');
     res.json(deals.map(d => {
       const { photo, photoKey, ...rest } = d;
       return { ...rest, expenses: (rest.expenses || []).map(({ files, receiptRefs, ...e }) => e) };

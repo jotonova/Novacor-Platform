@@ -2637,7 +2637,7 @@ th.sort-desc::after { content: ' ▼'; font-size: 0.6em; }
   <div class="form-group"><label>Property Address</label><input type="text" id="nd-address" placeholder="4455 Roosevelt Ave, Kingman AZ"></div>
   <div class="form-row form-row-2">
     <div class="form-group"><label>Status</label>
-      <select id="nd-status"><option>Active</option><option>Pending</option><option>Invested</option><option>Under Contract</option></select>
+      <select id="nd-status"><option>Pending</option><option>Invested</option><option>Closed</option><option>Archived</option></select>
     </div>
     <div class="form-group"><label>COE Date</label><input type="date" id="nd-coe"></div>
   </div>
@@ -3342,6 +3342,61 @@ async function initDB() {
   } catch(e) { console.warn('[DB] Backend unavailable:', e.message); }
 }
 
+// ONE-TIME migration: merge closed_deals into active_deals (unified store).
+// Guard: only runs when nc_closed_deals is a non-empty array.
+// Idempotent: safe to call on every load — no-op if closed_deals is empty/absent.
+async function migrateToUnifiedStore() {
+  try {
+    const closedRaw = _cache['nc_closed_deals'];
+    const closedArr = Array.isArray(closedRaw) ? closedRaw : [];
+    if (!closedArr.length) return; // nothing to migrate
+
+    console.log('[Migration] Merging', closedArr.length, 'closed_deals into active_deals...');
+
+    // Fetch fresh active_deals from server to avoid stale cache
+    let activeDeals = [];
+    try {
+      const r = await fetch('/api/store/nc_active_deals').then(r => r.json());
+      activeDeals = JSON.parse(r.value || '[]');
+    } catch(e) {
+      activeDeals = Array.isArray(_cache['nc_active_deals']) ? _cache['nc_active_deals'] : [];
+    }
+
+    // Mark each closed deal as Archived and avoid duplicates (match by id)
+    const existingIds = new Set(activeDeals.map(d => d.id));
+    for (const d of closedArr) {
+      if (!existingIds.has(d.id)) {
+        activeDeals.push({
+          ...d,
+          status: 'Archived',
+          closedDate: d.closedDate || new Date().toISOString().slice(0, 10),
+        });
+        existingIds.add(d.id);
+      }
+    }
+
+    // Save merged active_deals
+    _cache['nc_active_deals'] = activeDeals;
+    await fetch('/api/store/nc_active_deals', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: activeDeals }),
+    });
+
+    // Clear closed_deals
+    _cache['nc_closed_deals'] = [];
+    await fetch('/api/store/nc_closed_deals', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: [] }),
+    });
+
+    console.log('[Migration] Done — unified store has', activeDeals.length, 'deals.');
+  } catch(e) {
+    console.error('[Migration] Failed:', e.message);
+  }
+}
+
 const DB = {
   get(k) { return _cache['nc_'+k] ?? null; },
   set(k, v) {
@@ -3417,8 +3472,11 @@ function renderDashboard() {
   const q = load('quote', '"People do not decide their futures, people decide their habits and their habits decide their futures." — F.M. Alexander');
   document.getElementById('dashboard-quote').textContent = q;
 
-  const deals = load('active_deals', []);
-  const closed = load('closed_deals', []);
+  const allDeals = load('active_deals', []);
+  // Dashboard shows Pending / Invested / Closed — not Archived
+  const deals = allDeals.filter(isDashboardDeal);
+  // Archived deals live in the same store; count them for the stats panel
+  const archivedDeals = allDeals.filter(isArchivedDeal);
   const income = load('nb_income', []);
   const expenses = load('nb_expenses', []);
 
@@ -3457,7 +3515,7 @@ function renderDashboard() {
 
   document.getElementById('dashboard-stats').innerHTML = `
     <div class="stat-box"><div class="stat-box-num">${deals.length}</div><div class="stat-box-label">Active Deals</div></div>
-    <div class="stat-box"><div class="stat-box-num">${closed.length}</div><div class="stat-box-label">Closed Deals</div></div>
+    <div class="stat-box"><div class="stat-box-num">${archivedDeals.length}</div><div class="stat-box-label">Closed Deals</div></div>
     <div class="stat-box"><div class="stat-box-num" style="color:${totalIncome>=0?'#2ecc71':'#e74c3c'}">$${fmtNum(totalIncome)}</div><div class="stat-box-label">YTD Income</div></div>
     <div class="stat-box"><div class="stat-box-num">$${fmtNum(ytdExpenses)}</div><div class="stat-box-label">YTD Expenses</div></div>
     <div class="stat-box"><div class="stat-box-num" style="color:${(totalIncome*0.8)>=0?'#2ecc71':'#e74c3c'}">$${fmtNum(totalIncome*0.8)}</div><div class="stat-box-label">Net P&L (after tax)</div></div>
@@ -3480,7 +3538,7 @@ function renderDashboard() {
       <div class="deal-card-body">
         <div class="deal-card-address">${d.address}</div>
         <div class="deal-card-meta">
-          <span class="badge badge-${statusClass(d.status)}">● ${d.status}</span>
+          <span class="badge badge-${statusClass(d.status)}">● ${normalizeStatus(d.status)}</span>
           ${d.dtype ? `<span style="font-size:0.72rem;color:var(--text-muted);">${d.dtype}</span>` : ''}
         </div>
         ${d.coe ? `<div style="font-size:0.72rem;color:var(--text-muted);margin-top:4px;">COE: ${d.coe}</div>` : ''}
@@ -3951,9 +4009,30 @@ function escHtml(s) {
 // ────────────────────────────────────────────────────────────────────────────
 
 function statusClass(s) {
-  if(!s) return 'active';
-  const m = {Active:'active',Invested:'invested',Pending:'pending','Under Contract':'pending',Closed:'closed'};
-  return m[s] || 'active';
+  if(!s) return 'pending';
+  const m = {
+    Pending:'pending', Invested:'invested', Closed:'closed', Archived:'closed',
+    // legacy values
+    Active:'pending', 'Under Contract':'pending', closed:'closed', active:'pending',
+  };
+  return m[s] || 'pending';
+}
+// Normalize stored status to canonical capitalized form
+function normalizeStatus(s) {
+  if(!s) return 'Pending';
+  const m = {'pending':'Pending','invested':'Invested','closed':'Closed','archived':'Archived',
+              'active':'Pending','under contract':'Pending'};
+  return m[s.toLowerCase()] || s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() || 'Pending';
+}
+// Returns true if a deal's status belongs on the dashboard (not Archived)
+function isDashboardDeal(d) {
+  const s = (d.status || '').toLowerCase();
+  return s !== 'archived';
+}
+// Returns true if a deal's status belongs on the Closed page
+function isArchivedDeal(d) {
+  const s = (d.status || '').toLowerCase();
+  return s === 'archived';
 }
 
 function fmtNum(n) {
@@ -4065,7 +4144,14 @@ function openDealDetail(id) {
   }
 
   document.getElementById('deal-detail-fields').innerHTML = `
-    <div class="deal-field"><div class="deal-field-label">Status</div><div class="deal-field-value"><span class="badge badge-${statusClass(d.status)}">● ${d.status||'—'}</span></div></div>
+    <div class="deal-field"><div class="deal-field-label">Status</div><div class="deal-field-value">
+      <select id="deal-status-select" onchange="changeDealStatus(this.value)" style="background:var(--card-bg);border:1px solid var(--border);color:var(--text);padding:4px 10px;border-radius:6px;font-size:0.85rem;cursor:pointer;">
+        <option value="Pending"${(normalizeStatus(d.status)==='Pending')?' selected':''}>Pending</option>
+        <option value="Invested"${(normalizeStatus(d.status)==='Invested')?' selected':''}>Invested</option>
+        <option value="Closed"${(normalizeStatus(d.status)==='Closed')?' selected':''}>Closed</option>
+        <option value="Archived"${(normalizeStatus(d.status)==='Archived')?' selected':''}>Archived</option>
+      </select>
+    </div></div>
     <div class="deal-field"><div class="deal-field-label">Deal Type</div><div class="deal-field-value">${d.dtype||'—'}</div></div>
     <div class="deal-field"><div class="deal-field-label">Purchase Price</div><div class="deal-field-value">$${fmtDollar(d.price)}</div></div>
     <div class="deal-field"><div class="deal-field-label">ARV</div><div class="deal-field-value">$${fmtDollar(d.arv)}</div></div>
@@ -4107,6 +4193,30 @@ function editSoldPrice() {
   // Re-render the fields section
   openDealDetail(currentDealId);
   renderDashboard();
+}
+
+async function changeDealStatus(newStatus) {
+  // Re-fetch latest from Turso to avoid overwriting concurrent changes
+  let deals;
+  try {
+    const r = await fetch('/api/store/nc_active_deals').then(r => r.json());
+    deals = JSON.parse(r.value || '[]');
+    _cache['nc_active_deals'] = deals;
+  } catch(e) {
+    deals = load('active_deals', []);
+  }
+  const d = deals.find(x => x.id === currentDealId);
+  if (!d) return;
+  d.status = newStatus;
+  // If archiving, stamp closedDate if not already set
+  if (newStatus === 'Archived' && !d.closedDate) {
+    d.closedDate = new Date().toISOString().slice(0, 10);
+  }
+  save('active_deals', deals);
+  closeModal('modal-deal-detail');
+  renderDashboard();
+  renderClosed();
+  toast(`Status → ${newStatus}`);
 }
 
 function switchDealTab(tab) {
@@ -4870,13 +4980,12 @@ function closeDealToArchive() {
   const deals = load('active_deals', []);
   const d = deals.find(x=>x.id===currentDealId);
   if(!d) return;
-  const closed = load('closed_deals', []);
-  closed.push({...d, closedDate: new Date().toISOString().slice(0,10), status:'Closed'});
-  save('closed_deals', closed);
-  const updated = deals.filter(x=>x.id!==currentDealId);
-  save('active_deals', updated);
+  d.status = 'Archived';
+  if(!d.closedDate) d.closedDate = new Date().toISOString().slice(0, 10);
+  save('active_deals', deals);
   closeModal('modal-deal-detail');
   renderDashboard();
+  renderClosed();
   toast('🏆 Deal archived as closed!');
 }
 
@@ -5055,12 +5164,16 @@ function saveClosedDeal() {
     dtype: document.getElementById('cd-type').value,
     notes: document.getElementById('cd-notes').value,
     photo: photo && photo !== window.location.href ? photo : '',
-    images: []
+    images: [],
+    status: 'Archived',
+    closedDate: document.getElementById('cd-sold').value || new Date().toISOString().slice(0, 10),
+    expenses: [], sow: [], files: [],
   };
   if(!deal.address){ toast('Enter an address'); return; }
-  const closed = load('closed_deals',[]);
-  closed.push(deal);
-  save('closed_deals', closed);
+  // Write to unified active_deals store
+  const deals = load('active_deals', []);
+  deals.push(deal);
+  save('active_deals', deals);
   closeModal('modal-new-closed');
   renderClosed();
   toast('🏆 Closed deal saved!');
@@ -5068,7 +5181,8 @@ function saveClosedDeal() {
 
 let currentClosedId = null;
 function renderClosed() {
-  const closed = load('closed_deals',[]);
+  const allDeals = load('active_deals', []);
+  const closed = allDeals.filter(isArchivedDeal);
   const grid = document.getElementById('closed-grid');
   if(!grid) return;
   if(!closed.length) { grid.innerHTML='<div style="color:var(--text-muted);">No closed deals yet. Add your first!</div>'; return; }
@@ -5099,22 +5213,31 @@ function renderClosed() {
 
 function openClosedDetail(id) {
   currentClosedId = id;
-  const closed = load('closed_deals',[]);
-  const d = closed.find(x=>x.id===id);
+  const allDeals = load('active_deals', []);
+  const d = allDeals.find(x=>x.id===id);
   if(!d) return;
-  const profit = parseFloat(d.sale||0) - parseFloat(d.purchase||0) - parseFloat(d.rehab||0);
+  const profit = parseFloat(d.sale||d.soldPrice||0) - parseFloat(d.purchase||d.price||0) - parseFloat(d.rehab||0);
   document.getElementById('closed-detail-title').textContent = d.address;
   document.getElementById('closed-detail-body').innerHTML = `
     <div id="closed-detail-hero" style="width:100%;height:200px;border-radius:6px;overflow:hidden;background:var(--navy-light);margin-bottom:18px;display:flex;align-items:center;justify-content:center;color:var(--text-muted);">
       ${d.photo ? `<img src="${d.photo}" style="width:100%;height:100%;object-fit:cover;">` : '<span>Loading...</span>'}
     </div>
     <div class="deal-fields" style="margin-bottom:16px;">
+      <div class="deal-field"><div class="deal-field-label">Status</div><div class="deal-field-value">
+        <select id="closed-status-select" onchange="changeArchivedDealStatus(this.value)" style="background:var(--card-bg);border:1px solid var(--border);color:var(--text);padding:4px 10px;border-radius:6px;font-size:0.85rem;cursor:pointer;">
+          <option value="Pending"${normalizeStatus(d.status)==='Pending'?' selected':''}>Pending</option>
+          <option value="Invested"${normalizeStatus(d.status)==='Invested'?' selected':''}>Invested</option>
+          <option value="Closed"${normalizeStatus(d.status)==='Closed'?' selected':''}>Closed</option>
+          <option value="Archived"${normalizeStatus(d.status)==='Archived'?' selected':''}>Archived</option>
+        </select>
+        <span style="font-size:0.72rem;color:var(--text-muted);margin-left:8px;">Change to move to dashboard</span>
+      </div></div>
       <div class="deal-field"><div class="deal-field-label">Deal Type</div><div class="deal-field-value">${d.dtype||'—'}</div></div>
       <div class="deal-field"><div class="deal-field-label">COE Date</div><div class="deal-field-value">${d.coe||'—'}</div></div>
-      <div class="deal-field"><div class="deal-field-label">Sale Date</div><div class="deal-field-value">${d.sold||'—'}</div></div>
-      <div class="deal-field"><div class="deal-field-label">Purchase Price</div><div class="deal-field-value">$${fmtDollar(d.purchase)}</div></div>
+      <div class="deal-field"><div class="deal-field-label">Sale Date</div><div class="deal-field-value">${d.sold||d.closedDate||'—'}</div></div>
+      <div class="deal-field"><div class="deal-field-label">Purchase Price</div><div class="deal-field-value">$${fmtDollar(d.purchase||d.price)}</div></div>
       <div class="deal-field"><div class="deal-field-label">Rehab Cost</div><div class="deal-field-value">$${fmtDollar(d.rehab)}</div></div>
-      <div class="deal-field"><div class="deal-field-label">Sale Price</div><div class="deal-field-value">$${fmtDollar(d.sale)}</div></div>
+      <div class="deal-field"><div class="deal-field-label">Sale Price</div><div class="deal-field-value">$${fmtDollar(d.sale||d.soldPrice)}</div></div>
     </div>
     <div class="qe-highlight" style="background:${profit>=0?'rgba(46,204,113,0.1)':'rgba(231,76,60,0.1)'};border-color:${profit>=0?'rgba(46,204,113,0.2)':'rgba(231,76,60,0.2)'};margin-bottom:16px;">
       <div><div class="qe-highlight-label">Net Profit</div><div class="qe-highlight-val" style="color:${profit>=0?'var(--success)':'var(--danger)'}">$${fmtDollar(profit)}</div></div>
@@ -5139,11 +5262,32 @@ function openClosedDetail(id) {
 
 function deleteClosedDeal() {
   if(!confirm('Delete this closed deal?')) return;
-  const closed = load('closed_deals',[]).filter(x=>x.id!==currentClosedId);
-  save('closed_deals',closed);
+  const deals = load('active_deals', []).filter(x => x.id !== currentClosedId);
+  save('active_deals', deals);
   closeModal('modal-closed-detail');
   renderClosed();
+  renderDashboard();
   toast('Deleted.');
+}
+
+async function changeArchivedDealStatus(newStatus) {
+  // Re-fetch latest from Turso before writing
+  let deals;
+  try {
+    const r = await fetch('/api/store/nc_active_deals').then(r => r.json());
+    deals = JSON.parse(r.value || '[]');
+    _cache['nc_active_deals'] = deals;
+  } catch(e) {
+    deals = load('active_deals', []);
+  }
+  const d = deals.find(x => x.id === currentClosedId);
+  if (!d) return;
+  d.status = newStatus;
+  save('active_deals', deals);
+  closeModal('modal-closed-detail');
+  renderClosed();
+  renderDashboard();
+  toast(`Status → ${newStatus}`);
 }
 
 // ══════════════════════════════════════════════════════
@@ -6085,13 +6229,14 @@ function renderFinancials() {
   const income = load('nb_income',[]);
   const exps = load('nb_expenses',[]);
   const miles = load('nb_mileage',[]);
-  const closed = load('closed_deals',[]);
+  const allDeals = load('active_deals', []);
+  const closed = allDeals.filter(isArchivedDeal);
 
   const totalIn = income.reduce((s,i)=>s+parseFloat(i.amount||0),0);
   const totalExp = exps.reduce((s,e)=>s+parseFloat(e.amount||0),0);
   const totalMiles = miles.reduce((s,m)=>s+parseFloat(m.miles||0),0);
   const totalDed = miles.reduce((s,m)=>s+parseFloat(m.deduction||0),0);
-  const closedProfit = closed.reduce((s,d)=>s+(parseFloat(d.sale||0)-parseFloat(d.purchase||0)-parseFloat(d.rehab||0)),0);
+  const closedProfit = closed.reduce((s,d)=>s+(parseFloat(d.sale||d.soldPrice||0)-parseFloat(d.purchase||d.price||0)-parseFloat(d.rehab||0)),0);
 
   document.getElementById('fin-stats').innerHTML = `
     <div class="stat-box"><div class="stat-box-num" style="color:var(--success)">$${fmtNum(totalIn)}</div><div class="stat-box-label">YTD Income</div></div>
@@ -6147,6 +6292,7 @@ function renderFinancials() {
 // ══════════════════════════════════════════════════════
 async function init() {
   await initDB();
+  await migrateToUnifiedStore();
   // ONE-TIME CLEANUP: remove previously seeded expenses
   var deals = load('active_deals', []);
   var changed = false;
