@@ -2674,10 +2674,7 @@ th.sort-desc::after { content: ' ▼'; font-size: 0.6em; }
 <div class="modal modal-lg">
   <div class="modal-header">
     <div class="modal-title" id="deal-detail-title">Deal Detail</div>
-    <div style="display:flex;gap:8px;">
-      <button class="btn btn-outline btn-sm" onclick="closeDealToArchive()">Archive as Closed</button>
-      <button class="modal-close" onclick="closeModal('modal-deal-detail')">✕</button>
-    </div>
+    <button class="modal-close" onclick="closeModal('modal-deal-detail')">✕</button>
   </div>
   <div class="deal-detail-hero" id="deal-detail-hero"><span>No photo uploaded</span></div>
   <div id="deal-photo-actions" style="display:flex;gap:8px;padding:6px 12px;background:rgba(13,31,60,0.85);border-bottom:1px solid var(--border);">
@@ -4218,6 +4215,8 @@ async function changeDealStatus(newStatus) {
   renderClosed();
   toast(`Status → ${newStatus}`);
 }
+// Expose to window so inline onchange= handlers in innerHTML can reach it
+window.changeDealStatus = changeDealStatus;
 
 function switchDealTab(tab) {
   document.querySelectorAll('.deal-sub-tab').forEach(t=>t.classList.remove('active'));
@@ -5289,6 +5288,8 @@ async function changeArchivedDealStatus(newStatus) {
   renderDashboard();
   toast(`Status → ${newStatus}`);
 }
+// Expose to window so inline onchange= handlers in innerHTML can reach it
+window.changeArchivedDealStatus = changeArchivedDealStatus;
 
 // ══════════════════════════════════════════════════════
 // NOVABOOKS
