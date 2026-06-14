@@ -4104,6 +4104,24 @@ function previewClosedPhoto(e) {
   reader.readAsDataURL(file);
 }
 
+// Derive ARV + Rehab from a linked QE deal at render time.
+// Returns { arv, rehab } or null if no linked QE deal found.
+function getQEDerivedValues(deal) {
+  if (!deal.linkedQEDeal) return null;
+  var qeDeals = qeGetDeals();
+  var qe = qeDeals.find(function(q) { return q.name === deal.linkedQEDeal; });
+  if (!qe || !qe.state) return null;
+  var arv = parseFloat(qe.state['qp-arv']) || 0;
+  var rehab = 0;
+  Object.keys(qe.state).forEach(function(k) {
+    if (k.startsWith('qe-')) {
+      var v = parseFloat(qe.state[k]);
+      if (!isNaN(v)) rehab += v;
+    }
+  });
+  return { arv: arv, rehab: rehab };
+}
+
 // ── Deal Detail ──
 let currentDealId = null;
 function openDealDetail(id) {
@@ -4140,6 +4158,10 @@ function openDealDetail(id) {
     updateDealPhotoActions(false);
   }
 
+  const qeVals = getQEDerivedValues(d);
+  const displayArv = qeVals ? qeVals.arv : d.arv;
+  const displayRehab = qeVals ? qeVals.rehab : d.rehab;
+
   document.getElementById('deal-detail-fields').innerHTML = `
     <div class="deal-field"><div class="deal-field-label">Status</div><div class="deal-field-value">
       <select id="deal-status-select" onchange="changeDealStatus(this.value)" style="background:var(--card-bg);border:1px solid var(--border);color:var(--text);padding:4px 10px;border-radius:6px;font-size:0.85rem;cursor:pointer;">
@@ -4151,8 +4173,8 @@ function openDealDetail(id) {
     </div></div>
     <div class="deal-field"><div class="deal-field-label">Deal Type</div><div class="deal-field-value">${d.dtype||'—'}</div></div>
     <div class="deal-field"><div class="deal-field-label">Purchase Price</div><div class="deal-field-value">$${fmtDollar(d.price)}</div></div>
-    <div class="deal-field"><div class="deal-field-label">ARV</div><div class="deal-field-value">$${fmtDollar(d.arv)}</div></div>
-    <div class="deal-field"><div class="deal-field-label">Rehab Budget</div><div class="deal-field-value">$${fmtDollar(d.rehab)}</div></div>
+    <div class="deal-field"><div class="deal-field-label">ARV</div><div class="deal-field-value">$${fmtDollar(displayArv)}</div></div>
+    <div class="deal-field"><div class="deal-field-label">Rehab Budget</div><div class="deal-field-value">$${fmtDollar(displayRehab)}</div></div>
     <div class="deal-field"><div class="deal-field-label">COE Date</div><div class="deal-field-value">${d.coe||'—'}</div></div>
     <div class="deal-field"><div class="deal-field-label">Sold Price</div><div class="deal-field-value" style="display:flex;align-items:center;gap:8px;">
       ${d.soldPrice ? '<span style="color:var(--gold);font-weight:600;">$'+fmtDollar(d.soldPrice)+'</span>' : '<span style="color:var(--text-muted);">—</span>'}
@@ -5186,7 +5208,9 @@ function renderClosed() {
   if(!grid) return;
   if(!closed.length) { grid.innerHTML='<div style="color:var(--text-muted);">No closed deals yet. Add your first!</div>'; return; }
   grid.innerHTML = closed.map(d=>{
-    const profit = parseFloat(d.sale||0) - parseFloat(d.purchase||0) - parseFloat(d.rehab||0);
+    const cqe = getQEDerivedValues(d);
+    const cRehab = cqe ? cqe.rehab : (d.rehab||0);
+    const profit = parseFloat(d.sale||0) - parseFloat(d.purchase||0) - parseFloat(cRehab);
     return `<div class="closed-card" onclick="openClosedDetail('${d.id}')">
       <div class="closed-card-img">
         ${d.photo
@@ -5202,7 +5226,7 @@ function renderClosed() {
           <div class="closed-stat"><div class="closed-stat-val">$${fmtNum(d.purchase)}</div><div class="closed-stat-lbl">Purchased</div></div>
           <div class="closed-stat"><div class="closed-stat-val">$${fmtNum(d.sale)}</div><div class="closed-stat-lbl">Sold For</div></div>
           <div class="closed-stat"><div class="closed-stat-val" style="color:${profit>=0?'var(--success)':'var(--danger)'}">$${fmtNum(profit)}</div><div class="closed-stat-lbl">Profit</div></div>
-          <div class="closed-stat"><div class="closed-stat-val">$${fmtNum(d.rehab)}</div><div class="closed-stat-lbl">Rehab</div></div>
+          <div class="closed-stat"><div class="closed-stat-val">$${fmtNum(cRehab)}</div><div class="closed-stat-lbl">Rehab</div></div>
         </div>
       </div>
     </div>`;
@@ -5215,7 +5239,9 @@ function openClosedDetail(id) {
   const allDeals = load('active_deals', []);
   const d = allDeals.find(x=>x.id===id);
   if(!d) return;
-  const profit = parseFloat(d.sale||d.soldPrice||0) - parseFloat(d.purchase||d.price||0) - parseFloat(d.rehab||0);
+  const cdqe = getQEDerivedValues(d);
+  const cdRehab = cdqe ? cdqe.rehab : (d.rehab||0);
+  const profit = parseFloat(d.sale||d.soldPrice||0) - parseFloat(d.purchase||d.price||0) - parseFloat(cdRehab);
   document.getElementById('closed-detail-title').textContent = d.address;
   document.getElementById('closed-detail-body').innerHTML = `
     <div id="closed-detail-hero" style="width:100%;height:200px;border-radius:6px;overflow:hidden;background:var(--navy-light);margin-bottom:18px;display:flex;align-items:center;justify-content:center;color:var(--text-muted);">
@@ -5235,7 +5261,7 @@ function openClosedDetail(id) {
       <div class="deal-field"><div class="deal-field-label">COE Date</div><div class="deal-field-value">${d.coe||'—'}</div></div>
       <div class="deal-field"><div class="deal-field-label">Sale Date</div><div class="deal-field-value">${d.sold||d.closedDate||'—'}</div></div>
       <div class="deal-field"><div class="deal-field-label">Purchase Price</div><div class="deal-field-value">$${fmtDollar(d.purchase||d.price)}</div></div>
-      <div class="deal-field"><div class="deal-field-label">Rehab Cost</div><div class="deal-field-value">$${fmtDollar(d.rehab)}</div></div>
+      <div class="deal-field"><div class="deal-field-label">Rehab Cost</div><div class="deal-field-value">$${fmtDollar(cdRehab)}</div></div>
       <div class="deal-field"><div class="deal-field-label">Sale Price</div><div class="deal-field-value">$${fmtDollar(d.sale||d.soldPrice)}</div></div>
     </div>
     <div class="qe-highlight" style="background:${profit>=0?'rgba(46,204,113,0.1)':'rgba(231,76,60,0.1)'};border-color:${profit>=0?'rgba(46,204,113,0.2)':'rgba(231,76,60,0.2)'};margin-bottom:16px;">
