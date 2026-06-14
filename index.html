@@ -4108,7 +4108,7 @@ function previewClosedPhoto(e) {
 // Returns { arv, rehab } or null if no linked QE deal found.
 function getQEDerivedValues(deal) {
   if (!deal.linkedQEDeal) return null;
-  var qeDeals = qeGetDeals();
+  var qeDeals = _cache[QE_KEY] || [];
   var qe = qeDeals.find(function(q) { return q.name === deal.linkedQEDeal; });
   if (!qe || !qe.state) return null;
   var arv = parseFloat(qe.state['qp-arv']) || 0;
