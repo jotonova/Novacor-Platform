@@ -4112,10 +4112,11 @@ function getQEDerivedValues(deal) {
   var qe = qeDeals.find(function(q) { return q.name === deal.linkedQEDeal; });
   if (!qe || !qe.state) return null;
   var arv = parseFloat(qe.state['qp-arv']) || 0;
+  var QE_SKIP = ['qe-save-name', 'qe-deal-notes'];
   var rehab = 0;
   Object.keys(qe.state).forEach(function(k) {
-    if (k.startsWith('qe-')) {
-      var v = parseFloat(qe.state[k]);
+    if (k.startsWith('qe-') && QE_SKIP.indexOf(k) === -1) {
+      var v = Number(qe.state[k]);
       if (!isNaN(v)) rehab += v;
     }
   });
