@@ -4266,6 +4266,67 @@ var EXP_LINE_ITEMS = [
   {name:'Misc',            budget:1000}
 ];
 
+// ── Qual-EFI sub-item breakdown (Budget View expanders) ──
+// Labels sourced verbatim from the Qual-EFI expenses form so they match exactly
+// what the user sees there. Excludes qe-save-name / qe-deal-notes (metadata).
+var QE_SUBITEM_LABELS = {
+  'qe-hvac-units':'Units / Equipment', 'qe-hvac-elec':'Electrical Work',
+  'qe-floor-sub':'Subfloor', 'qe-floor-hard':'Hard Surface', 'qe-floor-carpet':'Carpet',
+  'qe-paint-ext':'Exterior', 'qe-paint-int':'Interior',
+  'qe-kit-cab':'Cabinets', 'qe-kit-counter':'Countertop', 'qe-kit-appl':'Appliances', 'qe-kit-hood':'Hood / Microwave', 'qe-kit-island':'Island / Sink',
+  'qe-bath-van':'Vanities', 'qe-bath-toilet':'Toilets', 'qe-bath-tub':'Tub / Shower', 'qe-bath-hw':'Hardware & Plumbing',
+  'qe-ext-siding':'Siding', 'qe-ext-yard':'Yard / Landscaping', 'qe-ext-fence':'Fence', 'qe-ext-steps':'Steps / Trim',
+  'qe-int-dry':'Drywall', 'qe-int-doors':'Doors', 'qe-int-trim':'Trim / Molding', 'qe-int-plumb':'Plumbing', 'qe-int-windows':'Windows',
+  'qe-roof-new':'New Roof', 'qe-roof-repair':'Roof Repair',
+  'qe-hold-heloc':'Loan Interest', 'qe-hold-ins':'Insurance', 'qe-hold-util':'Utilities',
+  'qe-light-lr':'Living Room', 'qe-light-kit':'Kitchen', 'qe-light-bed':'Bedrooms', 'qe-light-bath':'Bathrooms',
+  'qe-garage-new':'New Structure', 'qe-garage-roof':'Roof', 'qe-garage-door':'Door / Opener',
+  'qe-misc-buf':'Contingency Buffer', 'qe-misc-other':'Other'
+};
+
+// Grouping (line item → ordered qe-* keys) is reused from QE_BUDGET_MAP (defined
+// below), the SAME map expBudgets is summed from — so this breakdown can never
+// drift from the line-item totals.
+
+// Read-only breakdown HTML for a budget line item. Derived at render time from
+// the linked QE deal's live state (same source as getQEDerivedValues), so it
+// always reflects current Qual-EFI values. Never writes.
+function expBudgetBreakdownHtml(d, lineItemName) {
+  var keys = QE_BUDGET_MAP[lineItemName] || [];
+  if(!keys.length) return '';
+  if(!d.linkedQEDeal) {
+    return '<div class="exp-bd-inner" style="padding:10px 14px 12px 34px;color:var(--text-muted);font-size:0.8rem;font-style:italic;">Link a Qual-EFI deal to see the detailed breakdown</div>';
+  }
+  var qeDeals = _cache[QE_KEY] || [];
+  var qe = qeDeals.find(function(q){ return q.name === d.linkedQEDeal; });
+  var state = (qe && qe.state) || {};
+  var inner = '<div class="exp-bd-inner" style="padding:6px 14px 10px 34px;">';
+  keys.forEach(function(k) {
+    var n = Number(state[k]);
+    if(isNaN(n)) n = 0;  // blank / missing / non-numeric → $0.00
+    inner += '<div style="display:flex;justify-content:space-between;gap:12px;padding:4px 0;font-size:0.82rem;border-bottom:1px solid rgba(255,255,255,0.05);">' +
+      '<span style="color:var(--text-muted);">' + (QE_SUBITEM_LABELS[k] || k) + '</span>' +
+      '<span style="color:var(--gold);font-variant-numeric:tabular-nums;">$' + fmtDollar(n) + '</span>' +
+    '</div>';
+  });
+  inner += '</div>';
+  return inner;
+}
+
+// Accordion toggle for a budget row's breakdown. Pure DOM — no save/write.
+function expToggleBreakdown(rowEl, idx) {
+  var panel = document.getElementById('exp-bd-panel-' + idx);
+  if(!panel) return;
+  var willOpen = panel.style.display === 'none';
+  document.querySelectorAll('.exp-bd-panel').forEach(function(p){ p.style.display = 'none'; });
+  document.querySelectorAll('.exp-bd-chev').forEach(function(c){ c.style.transform = 'rotate(0deg)'; });
+  if(willOpen) {
+    panel.style.display = 'block';
+    var chev = rowEl.querySelector('.exp-bd-chev');
+    if(chev) chev.style.transform = 'rotate(90deg)';
+  }
+}
+
 var expCurrentView = 'budget';
 
 function expSwitchView(view) {
@@ -4348,16 +4409,18 @@ function renderDealExpenses(d) {
   if(expCurrentView === 'budget') {
     // Budget view: one row per line item
     var rows = '<div class="exp-header-row"><div>Line Item</div><div style="text-align:right">Budget</div><div style="text-align:right">Spent</div><div style="text-align:right">Remaining</div><div></div></div>';
-    EXP_LINE_ITEMS.forEach(function(li) {
+    EXP_LINE_ITEMS.forEach(function(li, idx) {
       var b = budgets[li.name];
       var s = spent[li.name]||0;
       var r = b - s;
       var remClass = r < 0 ? 'exp-remaining-neg' : (r > 0 ? 'exp-remaining-pos' : '');
       var barPct = b > 0 ? Math.min(100, (s/b)*100) : (s>0?100:0);
       var barColor = r<0 ? 'var(--danger)' : 'var(--gold)';
-      rows += '<div class="exp-budget-row">' +
+      rows += '<div class="exp-budget-row" style="cursor:pointer;" onclick="expToggleBreakdown(this,'+idx+')" title="Show Qual-EFI breakdown">' +
         '<div>' +
-          '<div style="font-weight:600;color:var(--white);">' + li.name + '</div>' +
+          '<div style="font-weight:600;color:var(--white);display:flex;align-items:center;gap:7px;">' +
+            '<span class="exp-bd-chev" style="display:inline-block;color:var(--gold);font-size:0.7rem;transition:transform 0.2s;">&#x25B8;</span>' + li.name +
+          '</div>' +
           '<div style="margin-top:4px;height:3px;background:var(--border);border-radius:2px;">' +
             '<div style="height:3px;width:'+barPct+'%;background:'+barColor+';border-radius:2px;transition:width 0.3s;"></div>' +
           '</div>' +
@@ -4365,7 +4428,10 @@ function renderDealExpenses(d) {
         '<div style="text-align:right;color:var(--blue-bright);">'+( b>0?'$'+fmtDollar(b):'—' )+'</div>' +
         '<div style="text-align:right;color:var(--danger);">'+( s>0?'$'+fmtDollar(s):'—' )+'</div>' +
         '<div style="text-align:right;" class="'+remClass+'">'+( b>0||s>0 ? (r<0?'-':'')+'$'+fmtDollar(Math.abs(r)) : '—' )+'</div>' +
-        '<button onclick="expEditBudget(this)" data-li="' + li.name + '" data-b="' + b + '" style="background:transparent;border:none;cursor:pointer;font-size:0.82rem;padding:2px 4px;color:#d8dde6;opacity:0.75;transition:opacity 0.15s;" title="Edit budget" >&#x270F;</button>' +
+        '<button onclick="event.stopPropagation();expEditBudget(this)" data-li="' + li.name + '" data-b="' + b + '" style="background:transparent;border:none;cursor:pointer;font-size:0.82rem;padding:2px 4px;color:#d8dde6;opacity:0.75;transition:opacity 0.15s;" title="Edit budget" >&#x270F;</button>' +
+      '</div>' +
+      '<div class="exp-bd-panel" id="exp-bd-panel-'+idx+'" style="display:none;background:rgba(0,0,0,0.18);border-bottom:1px solid var(--border);">' +
+        expBudgetBreakdownHtml(d, li.name) +
       '</div>';
     });
     if(!exps.length && totalBudget===0) {
