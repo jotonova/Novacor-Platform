@@ -372,6 +372,120 @@ app.delete('/api/store/:key', async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── CRM: Bulk AI lead intake (Driving-for-Dollars) ────────────────────────────
+// Parses freeform D4D notes into structured CRM leads via Claude. Parse ONLY —
+// nothing is written here; the frontend previews and writes on confirm.
+app.post('/api/crm/parse-leads', async (req, res) => {
+  try {
+    const text = (req.body && typeof req.body.text === 'string') ? req.body.text.trim() : '';
+    if (!text) return res.status(400).json({ error: 'Paste some notes first.' });
+    if (text.length > 60000) return res.status(400).json({ error: 'That paste is too large — split it into smaller batches.' });
+
+    const apiKey = (process.env.ANTHROPIC_API_KEY || '').replace(/[\s\n\r]/g, '');
+    if (!apiKey) return res.status(500).json({ error: 'AI is not configured (ANTHROPIC_API_KEY missing).' });
+
+    const systemPrompt = `You are a data-extraction assistant for a real estate investor's CRM. The user pastes freeform "driving for dollars" notes. Each property entry has a property line (property address, beds/baths/garage like "3/2/1", sqft, year built, lot size, last sold price + year, then a "•" followed by the OWNER NAME), followed by an owner mailing block (mailing street address, city, state, zip).
+
+Extract an ARRAY of lead objects. Output ONLY valid JSON — a single JSON array. No markdown, no code fences, no preamble, no explanation.
+
+Each object must have exactly these keys:
+{
+  "name": string,              // owner name — the text AFTER the "•". Preserve exactly as written; only tidy capitalization/spacing.
+  "address": string,           // the PROPERTY/subject address (e.g. "4280 Adams"). Normalize to a clean readable form; preserve as written, tidy only.
+  "mailing_address": string,   // owner's mailing street address from the mailing block
+  "mailing_city": string,
+  "mailing_state": string,
+  "mailing_zip": string,
+  "notes": string,             // fold ALL property details into clean readable text: beds/baths/garage, sqft, year built, lot size, and "last sold for $X in YEAR"
+  "motivation_tags": string[]  // If mailing state is not "AZ" OR the mailing address differs from the property address, include "absentee_owner". Otherwise an empty array.
+}
+
+Rules:
+- Do NOT invent data. Use only what is present in the text.
+- For any value that is "?", "unknown", "not known", or missing: OMIT that detail from notes. The lead is still valid — do NOT skip a property just because some details are missing.
+- If a line is too thin to be a real lead (no owner name AND no mailing info — just a stray comment), skip it entirely.
+- Preserve exact owner names and addresses as written; only tidy capitalization and spacing.
+- "motivation_tags" must be a JSON array of strings (may be empty []).
+- Output the JSON array and nothing else.`;
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 4000,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: text }]
+      })
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      console.error('[parse-leads] Anthropic error:', response.status, JSON.stringify(data).slice(0, 400));
+      return res.status(502).json({ error: 'AI service error. Please try again in a moment.' });
+    }
+
+    const raw = data.content?.[0]?.text || '';
+    // Be defensive: strip accidental code fences and isolate the JSON array.
+    let jsonText = raw.replace(/^```(?:json)?/i, '').replace(/```$/,'').trim();
+    const start = jsonText.indexOf('[');
+    const end = jsonText.lastIndexOf(']');
+    if (start !== -1 && end !== -1 && end > start) jsonText = jsonText.slice(start, end + 1);
+
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch (e) {
+      console.error('[parse-leads] JSON parse failed. Raw:', raw.slice(0, 400));
+      return res.status(502).json({ error: 'AI returned unreadable output. Try again or reduce the batch size.' });
+    }
+
+    // Accept a bare array or an object wrapping one.
+    const arr = Array.isArray(parsed) ? parsed
+      : (Array.isArray(parsed?.leads) ? parsed.leads : null);
+    if (!arr) return res.status(502).json({ error: 'AI did not return a lead list. Try again.' });
+
+    const today = new Date().toISOString().slice(0, 10);
+    const str = (v) => (v == null ? '' : String(v).trim());
+
+    const leads = arr
+      .filter(o => o && typeof o === 'object')
+      .map(o => {
+        // motivation_tags → JSON STRING (matches existing CRM records, e.g. "[\"vacant\"]")
+        let tags = Array.isArray(o.motivation_tags)
+          ? o.motivation_tags.filter(t => typeof t === 'string' && t.trim()).map(t => t.trim())
+          : [];
+        return {
+          id: `d4d_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+          name:            str(o.name),
+          address:         str(o.address),
+          mailing_address: str(o.mailing_address),
+          mailing_city:    str(o.mailing_city),
+          mailing_state:   str(o.mailing_state),
+          mailing_zip:     str(o.mailing_zip),
+          notes:           str(o.notes),
+          motivation_tags: JSON.stringify(tags),
+          type:   'lead',
+          source: 'd4d',
+          status: 'Active',
+          added:  today,
+          ai_score: null,
+        };
+      })
+      // Drop anything with neither a name nor any mailing info (belt + suspenders).
+      .filter(l => l.name || l.mailing_address || l.mailing_city || l.mailing_zip);
+
+    res.json({ leads });
+  } catch (e) {
+    console.error('[parse-leads]', e.message);
+    res.status(500).json({ error: 'Could not parse leads: ' + e.message });
+  }
+});
+
 // ── Google OAuth ──────────────────────────────────────────────────────────────
 
 const GOOGLE_SCOPES = [

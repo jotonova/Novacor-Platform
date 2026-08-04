@@ -2505,7 +2505,10 @@ th.sort-desc::after { content: ' ▼'; font-size: 0.6em; }
       <button class="filter-btn" onclick="filterCRM('Partner',this)">Partners</button>
       <button class="filter-btn" onclick="filterCRM('Lead',this)">Leads</button>
     </div>
-    <button class="btn btn-gold" onclick="openModal('modal-new-contact')">+ Add Contact</button>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-ghost" onclick="openBulkD4D()">＋ Bulk Add (D4D)</button>
+      <button class="btn btn-gold" onclick="openModal('modal-new-contact')">+ Add Contact</button>
+    </div>
   </div>
   <div class="crm-grid" id="crm-grid"></div>
 </div>
@@ -3026,10 +3029,58 @@ th.sort-desc::after { content: ' ▼'; font-size: 0.6em; }
       <select id="crm-status"><option>Active</option><option>Past</option><option>Future</option><option>Warm Lead</option><option>Cold Lead</option></select>
     </div>
   </div>
+  <div class="form-group"><label>Owner Mailing Address</label><input type="text" id="crm-mailing-address" placeholder="Owner's mailing street (for letters)"></div>
+  <div class="form-row form-row-2">
+    <div class="form-group"><label>Mailing City</label><input type="text" id="crm-mailing-city"></div>
+    <div class="form-group" style="display:flex;gap:10px;">
+      <div style="flex:1;"><label>State</label><input type="text" id="crm-mailing-state" maxlength="2" placeholder="AZ"></div>
+      <div style="flex:1;"><label>ZIP</label><input type="text" id="crm-mailing-zip"></div>
+    </div>
+  </div>
   <div class="form-group"><label>Notes</label><textarea id="crm-notes" rows="3" placeholder="How they found us, motivation, follow-up needed..."></textarea></div>
   <div style="display:flex;gap:10px;">
     <button class="btn btn-gold" onclick="saveContact()">Add Contact</button>
     <button class="btn btn-ghost" onclick="closeModal('modal-new-contact')">Cancel</button>
+  </div>
+</div>
+</div>
+
+<!-- Bulk Add (D4D) — paste, parse, preview, confirm -->
+<div class="modal-overlay hidden" id="modal-bulk-d4d">
+<div class="modal" style="max-width:900px;width:94%;max-height:90vh;overflow-y:auto;">
+  <div class="modal-header">
+    <div class="modal-title">🚗 Bulk Add — Driving for Dollars</div>
+    <button class="modal-close" onclick="closeBulkD4D()">✕</button>
+  </div>
+
+  <!-- Step 1: paste -->
+  <div id="bulk-d4d-input">
+    <div class="form-group">
+      <label>Paste your driving-for-dollars notes here</label>
+      <textarea id="bulk-d4d-text" rows="12" placeholder="Paste the full block of property + owner notes. One property per entry (property line with a • before the owner name, then the owner mailing block below it)." style="width:100%;font-family:'DM Mono',ui-monospace,monospace;font-size:0.78rem;line-height:1.5;"></textarea>
+    </div>
+    <div id="bulk-d4d-error" style="display:none;color:#e74c3c;font-size:0.8rem;margin-bottom:10px;"></div>
+    <div style="display:flex;gap:10px;align-items:center;">
+      <button class="btn btn-gold" id="bulk-d4d-parse-btn" onclick="parseBulkD4D()">Parse with AI</button>
+      <button class="btn btn-ghost" onclick="closeBulkD4D()">Cancel</button>
+      <span id="bulk-d4d-loading" style="display:none;color:var(--gold);font-size:0.82rem;">⏳ Parsing… this can take a few seconds.</span>
+    </div>
+  </div>
+
+  <!-- Step 2: preview -->
+  <div id="bulk-d4d-preview" style="display:none;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+      <div id="bulk-d4d-count" style="font-weight:700;color:var(--gold);font-size:0.95rem;"></div>
+      <button class="btn btn-ghost btn-sm" onclick="backToBulkInput()">← Back to paste</button>
+    </div>
+    <div id="bulk-d4d-warn" style="display:none;font-size:0.76rem;color:#e0a800;margin-bottom:8px;"></div>
+    <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;">
+      <table id="bulk-d4d-table" style="width:100%;border-collapse:collapse;font-size:0.76rem;"></table>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:14px;">
+      <button class="btn btn-gold" id="bulk-d4d-confirm-btn" onclick="confirmBulkD4D()">Confirm & Add to CRM</button>
+      <button class="btn btn-ghost" onclick="closeBulkD4D()">Cancel</button>
+    </div>
   </div>
 </div>
 </div>
@@ -3076,6 +3127,11 @@ th.sort-desc::after { content: ' ▼'; font-size: 0.6em; }
         <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:4px;">Added</div>
         <div id="crm-modal-added" style="font-size:0.85rem;color:var(--text);"></div>
       </div>
+    </div>
+    <!-- Owner Mailing Address -->
+    <div id="crm-modal-mailing-section" style="padding:14px 24px;border-bottom:1px solid var(--border);display:none;">
+      <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:4px;font-weight:600;">Owner Mailing Address</div>
+      <div id="crm-modal-mailing" style="font-size:0.85rem;color:var(--text);"></div>
     </div>
     <!-- Motivation Tags -->
     <div id="crm-modal-tags-section" style="padding:14px 24px;border-bottom:1px solid var(--border);">
@@ -5729,14 +5785,172 @@ function saveContact() {
     email:document.getElementById('crm-email').value,
     address:document.getElementById('crm-address').value,
     status:document.getElementById('crm-status').value,
+    mailing_address:document.getElementById('crm-mailing-address').value,
+    mailing_city:document.getElementById('crm-mailing-city').value,
+    mailing_state:document.getElementById('crm-mailing-state').value,
+    mailing_zip:document.getElementById('crm-mailing-zip').value,
     notes:document.getElementById('crm-notes').value,
     added:new Date().toISOString().slice(0,10)
   });
   save('crm_contacts',contacts);
   closeModal('modal-new-contact');
-  ['crm-name','crm-phone','crm-email','crm-address','crm-notes'].forEach(i=>document.getElementById(i).value='');
+  ['crm-name','crm-phone','crm-email','crm-address','crm-mailing-address','crm-mailing-city','crm-mailing-state','crm-mailing-zip','crm-notes'].forEach(i=>document.getElementById(i).value='');
   renderCRM();
   toast('📞 Contact added!');
+}
+
+// ── Bulk Add (D4D): paste → AI parse → preview → confirm ──────────────────────
+window._bulkD4DLeads = [];
+function _d4dEsc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+function openBulkD4D() {
+  window._bulkD4DLeads = [];
+  document.getElementById('bulk-d4d-text').value = '';
+  document.getElementById('bulk-d4d-error').style.display = 'none';
+  document.getElementById('bulk-d4d-loading').style.display = 'none';
+  document.getElementById('bulk-d4d-input').style.display = 'block';
+  document.getElementById('bulk-d4d-preview').style.display = 'none';
+  openModal('modal-bulk-d4d');
+}
+function closeBulkD4D() { closeModal('modal-bulk-d4d'); window._bulkD4DLeads = []; }
+function backToBulkInput() {
+  document.getElementById('bulk-d4d-preview').style.display = 'none';
+  document.getElementById('bulk-d4d-input').style.display = 'block';
+}
+
+async function parseBulkD4D() {
+  const text = document.getElementById('bulk-d4d-text').value.trim();
+  const errEl = document.getElementById('bulk-d4d-error');
+  errEl.style.display = 'none';
+  if (!text) { errEl.textContent = 'Paste some notes first.'; errEl.style.display = 'block'; return; }
+
+  const btn = document.getElementById('bulk-d4d-parse-btn');
+  const loading = document.getElementById('bulk-d4d-loading');
+  btn.disabled = true; loading.style.display = 'inline';
+  try {
+    const res = await fetch('/api/crm/parse-leads', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || 'Parse failed.');
+    const leads = Array.isArray(data.leads) ? data.leads : [];
+    if (!leads.length) throw new Error('No leads found in that text. Check the format and try again.');
+    window._bulkD4DLeads = leads;
+    renderBulkD4DPreview();
+    document.getElementById('bulk-d4d-input').style.display = 'none';
+    document.getElementById('bulk-d4d-preview').style.display = 'block';
+  } catch (e) {
+    errEl.textContent = e.message; errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false; loading.style.display = 'none';
+  }
+}
+
+function renderBulkD4DPreview() {
+  const leads = window._bulkD4DLeads;
+  document.getElementById('bulk-d4d-count').textContent = `Parsed ${leads.length} lead${leads.length===1?'':'s'}`;
+
+  const missing = leads.filter(l => !String(l.mailing_address||'').trim()).length;
+  const warnEl = document.getElementById('bulk-d4d-warn');
+  if (missing > 0) { warnEl.textContent = `⚠ ${missing} lead${missing===1?'':'s'} missing a mailing address (highlighted below) — review before saving.`; warnEl.style.display = 'block'; }
+  else { warnEl.style.display = 'none'; }
+
+  const th = 'padding:6px 8px;text-align:left;font-size:0.66rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card-bg,#0d1e35);';
+  const inp = 'width:100%;background:var(--input-bg,#0d1e35);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.74rem;padding:4px 6px;box-sizing:border-box;font-family:inherit;';
+  let html = `<thead><tr>
+    <th style="${th}">Name</th>
+    <th style="${th}">Property Address</th>
+    <th style="${th}">Mailing Address</th>
+    <th style="${th}">Tags</th>
+    <th style="${th}">Notes</th>
+    <th style="${th}"></th>
+  </tr></thead><tbody>`;
+
+  leads.forEach((l, i) => {
+    let tags = []; try { tags = JSON.parse(l.motivation_tags || '[]'); } catch(e) {}
+    const tagChips = tags.length
+      ? tags.map(t => `<span style="display:inline-block;background:rgba(212,175,55,0.15);color:var(--gold);border-radius:8px;padding:1px 7px;font-size:0.66rem;margin:1px 2px;white-space:nowrap;">${_d4dEsc(t)}</span>`).join('')
+      : '<span style="color:var(--text-muted);font-size:0.66rem;">—</span>';
+    const notesFull = _d4dEsc(l.notes || '');
+    const notesTrunc = (l.notes || '').length > 60 ? _d4dEsc(l.notes.slice(0,60)) + '…' : notesFull;
+    const lowData = !String(l.mailing_address||'').trim();
+    const rowStyle = lowData ? 'border-left:3px solid #e0a800;' : 'border-left:3px solid transparent;';
+    const cell = 'padding:5px 8px;border-bottom:1px solid var(--border);vertical-align:top;';
+
+    html += `<tr data-i="${i}" style="${rowStyle}">
+      <td style="${cell}"><input style="${inp}" value="${_d4dEsc(l.name)}" oninput="bulkD4DEdit(${i},'name',this.value)"></td>
+      <td style="${cell}"><input style="${inp}" value="${_d4dEsc(l.address)}" oninput="bulkD4DEdit(${i},'address',this.value)"></td>
+      <td style="${cell};min-width:190px;">
+        <input style="${inp};margin-bottom:3px;" placeholder="Mailing street" value="${_d4dEsc(l.mailing_address)}" oninput="bulkD4DEditMailing(${i},'mailing_address',this.value,this)">
+        <div style="display:flex;gap:3px;">
+          <input style="${inp}" placeholder="City" value="${_d4dEsc(l.mailing_city)}" oninput="bulkD4DEdit(${i},'mailing_city',this.value)">
+          <input style="${inp};max-width:42px;" placeholder="ST" maxlength="2" value="${_d4dEsc(l.mailing_state)}" oninput="bulkD4DEdit(${i},'mailing_state',this.value)">
+          <input style="${inp};max-width:64px;" placeholder="ZIP" value="${_d4dEsc(l.mailing_zip)}" oninput="bulkD4DEdit(${i},'mailing_zip',this.value)">
+        </div>
+      </td>
+      <td style="${cell};max-width:130px;">${tagChips}</td>
+      <td style="${cell};max-width:200px;"><span title="${notesFull}" style="color:var(--text-muted);font-size:0.72rem;">${notesTrunc}</span></td>
+      <td style="${cell};text-align:center;"><button onclick="bulkD4DRemove(${i})" title="Remove this lead" style="background:transparent;border:none;color:#e74c3c;cursor:pointer;font-size:1rem;line-height:1;">✕</button></td>
+    </tr>`;
+  });
+  html += '</tbody>';
+  document.getElementById('bulk-d4d-table').innerHTML = html;
+}
+
+function bulkD4DEdit(i, field, value) {
+  if (window._bulkD4DLeads[i]) window._bulkD4DLeads[i][field] = value;
+}
+function bulkD4DEditMailing(i, field, value, el) {
+  bulkD4DEdit(i, field, value);
+  // Live-update the low-data flag + warning count without a full re-render.
+  const tr = el.closest('tr');
+  if (tr) tr.style.borderLeft = value.trim() ? '3px solid transparent' : '3px solid #e0a800';
+  const missing = window._bulkD4DLeads.filter(l => !String(l.mailing_address||'').trim()).length;
+  const warnEl = document.getElementById('bulk-d4d-warn');
+  if (missing > 0) { warnEl.textContent = `⚠ ${missing} lead${missing===1?'':'s'} missing a mailing address (highlighted below) — review before saving.`; warnEl.style.display = 'block'; }
+  else { warnEl.style.display = 'none'; }
+}
+function bulkD4DRemove(i) {
+  window._bulkD4DLeads.splice(i, 1);
+  if (!window._bulkD4DLeads.length) { backToBulkInput(); return; }
+  renderBulkD4DPreview();
+}
+
+async function confirmBulkD4D() {
+  const leads = window._bulkD4DLeads;
+  if (!leads.length) { closeBulkD4D(); return; }
+  const btn = document.getElementById('bulk-d4d-confirm-btn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    // Re-fetch the latest contacts to avoid clobbering concurrent changes.
+    let existing = [];
+    try {
+      const r = await fetch('/api/store/nc_crm_contacts').then(r => r.json());
+      existing = JSON.parse(r.value || '[]');
+      if (!Array.isArray(existing)) existing = [];
+    } catch(e) {
+      existing = Array.isArray(_cache['nc_crm_contacts']) ? _cache['nc_crm_contacts'] : [];
+    }
+    const merged = existing.concat(leads);
+    // PUT the RAW array (endpoint stringifies internally — never pre-stringify).
+    const put = await fetch('/api/store/nc_crm_contacts', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: merged }),
+    });
+    if (!put.ok) throw new Error('Save failed');
+    _cache['nc_crm_contacts'] = merged;   // keep write-through cache in sync
+    closeBulkD4D();
+    renderCRM();
+    toast(`✅ Added ${leads.length} lead${leads.length===1?'':'s'} to CRM`);
+  } catch (e) {
+    btn.disabled = false; btn.textContent = 'Confirm & Add to CRM';
+    const errEl = document.getElementById('bulk-d4d-error');
+    errEl.textContent = 'Could not save: ' + e.message; errEl.style.display = 'block';
+    document.getElementById('bulk-d4d-input').style.display = 'block';
+  }
 }
 
 function filterCRM(f, btn) {
@@ -5852,8 +6066,14 @@ window.openCrmContactModal = function(contactId) {
 
   document.getElementById('crm-modal-phone').textContent = c.phone||'—';
   document.getElementById('crm-modal-email').textContent = c.email||'—';
-  document.getElementById('crm-modal-source').textContent = c.source==='conversion_lab' ? '🤖 Conversion Lab' : c.source||'Manual';
+  document.getElementById('crm-modal-source').textContent = c.source==='conversion_lab' ? '🤖 Conversion Lab' : (c.source==='d4d' ? '🚗 D4D (bulk)' : c.source||'Manual');
   document.getElementById('crm-modal-added').textContent = c.added ? new Date(c.added).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+
+  // Owner mailing address (letters/envelopes) — only shown when present.
+  const mailLine = [c.mailing_address, c.mailing_city, c.mailing_state, c.mailing_zip].filter(x=>x&&String(x).trim()).join(', ');
+  const mailSection = document.getElementById('crm-modal-mailing-section');
+  if(mailLine) { document.getElementById('crm-modal-mailing').textContent = mailLine; mailSection.style.display='block'; }
+  else { mailSection.style.display='none'; }
 
   ['lead','seller','buyer','partner'].forEach(t=>{
     const btn = document.getElementById(`crm-type-btn-${t}`);
