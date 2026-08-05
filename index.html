@@ -2505,6 +2505,7 @@ th.sort-desc::after { content: ' ▼'; font-size: 0.6em; }
       <button class="filter-btn" onclick="filterCRM('Partner',this)">Partners</button>
       <button class="filter-btn" onclick="filterCRM('Lead',this)">Leads</button>
       <button class="filter-btn" onclick="filterCRM('due',this)">📬 Due for Next Letter</button>
+      <button class="filter-btn" onclick="filterCRM('archived',this)">📦 Archived</button>
     </div>
     <div style="display:flex;gap:8px;">
       <button class="btn btn-ghost" onclick="openGreetingBackfill()">✨ Generate Greeting Names</button>
@@ -3133,6 +3134,11 @@ th.sort-desc::after { content: ' ▼'; font-size: 0.6em; }
         <button onclick="setCrmContactType('seller')" id="crm-type-btn-seller" style="padding:6px 16px;border-radius:20px;font-size:0.75rem;font-weight:400;letter-spacing:0.05em;text-transform:uppercase;cursor:pointer;border:1px solid #2ecc71;background:transparent;color:var(--text-muted);transition:all 0.2s;">Seller</button>
         <button onclick="setCrmContactType('buyer')" id="crm-type-btn-buyer" style="padding:6px 16px;border-radius:20px;font-size:0.75rem;font-weight:400;letter-spacing:0.05em;text-transform:uppercase;cursor:pointer;border:1px solid #3498db;background:transparent;color:var(--text-muted);transition:all 0.2s;">Buyer</button>
         <button onclick="setCrmContactType('partner')" id="crm-type-btn-partner" style="padding:6px 16px;border-radius:20px;font-size:0.75rem;font-weight:400;letter-spacing:0.05em;text-transform:uppercase;cursor:pointer;border:1px solid #9b59b6;background:transparent;color:var(--text-muted);transition:all 0.2s;">Partner</button>
+      </div>
+      <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted);margin:14px 0 8px;font-weight:600;">Status</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;" id="crm-status-switcher">
+        <button onclick="setCrmContactStatus('Active')" id="crm-status-btn-active" style="padding:6px 16px;border-radius:20px;font-size:0.75rem;font-weight:400;letter-spacing:0.05em;text-transform:uppercase;cursor:pointer;border:1px solid #2ecc71;background:transparent;color:var(--text-muted);transition:all 0.2s;">Active</button>
+        <button onclick="setCrmContactStatus('Archived')" id="crm-status-btn-archived" style="padding:6px 16px;border-radius:20px;font-size:0.75rem;font-weight:400;letter-spacing:0.05em;text-transform:uppercase;cursor:pointer;border:1px solid #95a5a6;background:transparent;color:var(--text-muted);transition:all 0.2s;">📦 Archived</button>
       </div>
     </div>
     <!-- Contact Info -->
@@ -5810,15 +5816,30 @@ function deleteContractorFromEdit() {
 // CRM
 // ══════════════════════════════════════════════════════
 let crmFilter = 'all';
-function saveContact() {
-  const contacts = load('crm_contacts',[]);
-  contacts.push({
+async function saveContact() {
+  const address = document.getElementById('crm-address').value;
+
+  // Duplicate check by normalized PROPERTY ADDRESS against the freshest contacts
+  // (includes Archived). Hard-block with an "Add anyway / Cancel" override.
+  const fresh = await crmFetchFresh();
+  const dup = crmFindDuplicate(address, fresh);   // new contact → no self to exclude
+  if (dup) {
+    const camps = getCampaignsCompleted(dup);
+    const msg = `⚠️ This property is already in the CRM:\n\n` +
+      `  • ${dup.name || '(no name)'}\n` +
+      `  • Status: ${crmStatusOf(dup)}\n` +
+      `  • ${camps} campaign${camps===1?'':'s'} run\n\n` +
+      `Add it anyway as a separate contact?`;
+    if (!confirm(msg)) return;   // Cancel → abort the save
+  }
+
+  const newContact = {
     id:uid(),
     name:document.getElementById('crm-name').value,
     type:document.getElementById('crm-type').value,
     phone:document.getElementById('crm-phone').value,
     email:document.getElementById('crm-email').value,
-    address:document.getElementById('crm-address').value,
+    address:address,
     status:document.getElementById('crm-status').value,
     mailing_address:document.getElementById('crm-mailing-address').value,
     mailing_city:document.getElementById('crm-mailing-city').value,
@@ -5826,8 +5847,8 @@ function saveContact() {
     mailing_zip:document.getElementById('crm-mailing-zip').value,
     notes:document.getElementById('crm-notes').value,
     added:new Date().toISOString().slice(0,10)
-  });
-  save('crm_contacts',contacts);
+  };
+  await crmPersistContacts(arr => arr.push(newContact));
   closeModal('modal-new-contact');
   ['crm-name','crm-phone','crm-email','crm-address','crm-mailing-address','crm-mailing-city','crm-mailing-state','crm-mailing-zip','crm-notes'].forEach(i=>document.getElementById(i).value='');
   renderCRM();
@@ -5872,6 +5893,13 @@ async function parseBulkD4D() {
     if (!res.ok || data.error) throw new Error(data.error || 'Parse failed.');
     const leads = Array.isArray(data.leads) ? data.leads : [];
     if (!leads.length) throw new Error('No leads found in that text. Check the format and try again.');
+
+    // Duplicate detection vs. the freshest CRM (Archived included), by normalized
+    // property address. Dup rows are skipped on Confirm unless overridden.
+    const existing = await crmFetchFresh();
+    window._bulkDupIndex = crmDupIndex(existing);
+    leads.forEach(l => annotateLeadDup(l));
+
     window._bulkD4DLeads = leads;
     renderBulkD4DPreview();
     document.getElementById('bulk-d4d-input').style.display = 'none';
@@ -5883,18 +5911,38 @@ async function parseBulkD4D() {
   }
 }
 
+// Compute whether a parsed lead duplicates an existing contact (by normalized address).
+function annotateLeadDup(l) {
+  const key = normalizeAddress(l.address);
+  const dup = (key && window._bulkDupIndex) ? window._bulkDupIndex.get(key) : null;
+  l._dup = dup ? { status: crmStatusOf(dup), campaigns: getCampaignsCompleted(dup), name: dup.name || '' } : null;
+  if (!dup) l._override = false;   // clear a stale override when no longer a dup
+}
+
+// Combined warning banner: duplicates (hard-blocked unless overridden) + missing mailing.
+function updateBulkWarnings() {
+  const leads = window._bulkD4DLeads || [];
+  const dups = leads.filter(l => l._dup && !l._override).length;
+  const missing = leads.filter(l => !String(l.mailing_address||'').trim()).length;
+  const parts = [];
+  if (dups > 0) parts.push(`⚠️ ${dups} duplicate${dups===1?'':'s'} found — skipped unless you choose “Add anyway”.`);
+  if (missing > 0) parts.push(`⚠ ${missing} missing a mailing address (amber row).`);
+  const warnEl = document.getElementById('bulk-d4d-warn');
+  if (parts.length) { warnEl.innerHTML = parts.join('<br>'); warnEl.style.display = 'block'; }
+  else { warnEl.style.display = 'none'; }
+}
+
 function renderBulkD4DPreview() {
   const leads = window._bulkD4DLeads;
-  document.getElementById('bulk-d4d-count').textContent = `Parsed ${leads.length} lead${leads.length===1?'':'s'}`;
-
-  const missing = leads.filter(l => !String(l.mailing_address||'').trim()).length;
-  const warnEl = document.getElementById('bulk-d4d-warn');
-  if (missing > 0) { warnEl.textContent = `⚠ ${missing} lead${missing===1?'':'s'} missing a mailing address (highlighted below) — review before saving.`; warnEl.style.display = 'block'; }
-  else { warnEl.style.display = 'none'; }
+  const willAdd = leads.filter(l => !(l._dup && !l._override)).length;
+  document.getElementById('bulk-d4d-count').textContent =
+    `Parsed ${leads.length} lead${leads.length===1?'':'s'} · ${willAdd} will be added`;
+  updateBulkWarnings();
 
   const th = 'padding:6px 8px;text-align:left;font-size:0.66rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card-bg,#0d1e35);';
   const inp = 'width:100%;background:var(--input-bg,#0d1e35);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.74rem;padding:4px 6px;box-sizing:border-box;font-family:inherit;';
   let html = `<thead><tr>
+    <th style="${th}">Status</th>
     <th style="${th}">Name</th>
     <th style="${th}">Greeting</th>
     <th style="${th}">Property Address</th>
@@ -5911,14 +5959,30 @@ function renderBulkD4DPreview() {
       : '<span style="color:var(--text-muted);font-size:0.66rem;">—</span>';
     const notesFull = _d4dEsc(l.notes || '');
     const notesTrunc = (l.notes || '').length > 60 ? _d4dEsc(l.notes.slice(0,60)) + '…' : notesFull;
+    const isDup = !!l._dup;
+    const blocked = isDup && !l._override;
     const lowData = !String(l.mailing_address||'').trim();
-    const rowStyle = lowData ? 'border-left:3px solid #e0a800;' : 'border-left:3px solid transparent;';
+    // Red = duplicate (blocked); amber = missing mailing; else transparent.
+    const border = blocked ? '#e74c3c' : (lowData ? '#e0a800' : 'transparent');
+    const rowStyle = `border-left:3px solid ${border};${blocked?'opacity:0.75;':''}`;
     const cell = 'padding:5px 8px;border-bottom:1px solid var(--border);vertical-align:top;';
 
+    let statusCell;
+    if (isDup) {
+      const d = l._dup;
+      const on = !!l._override;
+      statusCell = `<div style="font-size:0.62rem;color:#e74c3c;line-height:1.3;font-weight:600;">⚠️ In CRM</div>
+        <div style="font-size:0.6rem;color:var(--text-muted);line-height:1.3;">${_d4dEsc(d.status)}${d.campaigns?`, ${d.campaigns} camp`:''}</div>
+        <button onclick="bulkToggleOverride(${i})" style="margin-top:4px;font-size:0.6rem;padding:2px 7px;border-radius:6px;cursor:pointer;border:1px solid ${on?'#2ecc71':'var(--border)'};background:${on?'rgba(46,204,113,0.15)':'transparent'};color:${on?'#2ecc71':'var(--text-muted)'};white-space:nowrap;">${on?'✓ Add anyway':'Skip'}</button>`;
+    } else {
+      statusCell = '<span style="color:#2ecc71;font-size:0.64rem;">✓ New</span>';
+    }
+
     html += `<tr data-i="${i}" style="${rowStyle}">
+      <td style="${cell};min-width:78px;">${statusCell}</td>
       <td style="${cell}"><input style="${inp}" value="${_d4dEsc(l.name)}" oninput="bulkD4DEdit(${i},'name',this.value)"></td>
       <td style="${cell}"><input style="${inp}" placeholder="Dear ___," value="${_d4dEsc(l.greeting_name)}" oninput="bulkD4DEdit(${i},'greeting_name',this.value)"></td>
-      <td style="${cell}"><input style="${inp}" value="${_d4dEsc(l.address)}" oninput="bulkD4DEdit(${i},'address',this.value)"></td>
+      <td style="${cell}"><input style="${inp}" value="${_d4dEsc(l.address)}" oninput="bulkD4DEdit(${i},'address',this.value)" onchange="bulkRecheckDup(${i})"></td>
       <td style="${cell};min-width:190px;">
         <input style="${inp};margin-bottom:3px;" placeholder="Mailing street" value="${_d4dEsc(l.mailing_address)}" oninput="bulkD4DEditMailing(${i},'mailing_address',this.value,this)">
         <div style="display:flex;gap:3px;">
@@ -5941,13 +6005,28 @@ function bulkD4DEdit(i, field, value) {
 }
 function bulkD4DEditMailing(i, field, value, el) {
   bulkD4DEdit(i, field, value);
-  // Live-update the low-data flag + warning count without a full re-render.
+  // Live-update the low-data flag without a full re-render (keeps a duplicate's red border intact).
+  const l = window._bulkD4DLeads[i];
   const tr = el.closest('tr');
-  if (tr) tr.style.borderLeft = value.trim() ? '3px solid transparent' : '3px solid #e0a800';
-  const missing = window._bulkD4DLeads.filter(l => !String(l.mailing_address||'').trim()).length;
-  const warnEl = document.getElementById('bulk-d4d-warn');
-  if (missing > 0) { warnEl.textContent = `⚠ ${missing} lead${missing===1?'':'s'} missing a mailing address (highlighted below) — review before saving.`; warnEl.style.display = 'block'; }
-  else { warnEl.style.display = 'none'; }
+  if (tr) {
+    const blocked = l._dup && !l._override;
+    tr.style.borderLeft = '3px solid ' + (blocked ? '#e74c3c' : (value.trim() ? 'transparent' : '#e0a800'));
+  }
+  updateBulkWarnings();
+}
+// Toggle a duplicate row between Skip (default) and Add-anyway.
+function bulkToggleOverride(i) {
+  const l = window._bulkD4DLeads[i];
+  if (!l || !l._dup) return;
+  l._override = !l._override;
+  renderBulkD4DPreview();
+}
+// Re-check a row's duplicate status after its property address is edited.
+function bulkRecheckDup(i) {
+  const l = window._bulkD4DLeads[i];
+  if (!l) return;
+  annotateLeadDup(l);
+  renderBulkD4DPreview();
 }
 function bulkD4DRemove(i) {
   window._bulkD4DLeads.splice(i, 1);
@@ -5958,6 +6037,21 @@ function bulkD4DRemove(i) {
 async function confirmBulkD4D() {
   const leads = window._bulkD4DLeads;
   if (!leads.length) { closeBulkD4D(); return; }
+
+  // Hard-block duplicates unless the row was explicitly overridden. Strip the
+  // internal _dup/_override fields so they never get persisted.
+  const toAdd = leads
+    .filter(l => l._override || !l._dup)
+    .map(l => { const { _dup, _override, ...rest } = l; return rest; });
+
+  const skipped = leads.length - toAdd.length;
+  if (!toAdd.length) {
+    const errEl = document.getElementById('bulk-d4d-error');
+    errEl.textContent = 'Every parsed lead is a duplicate — nothing to add (use “Add anyway” on a row to override).';
+    errEl.style.display = 'block';
+    return;
+  }
+
   const btn = document.getElementById('bulk-d4d-confirm-btn');
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
@@ -5970,7 +6064,7 @@ async function confirmBulkD4D() {
     } catch(e) {
       existing = Array.isArray(_cache['nc_crm_contacts']) ? _cache['nc_crm_contacts'] : [];
     }
-    const merged = existing.concat(leads);
+    const merged = existing.concat(toAdd);
     // PUT the RAW array (endpoint stringifies internally — never pre-stringify).
     const put = await fetch('/api/store/nc_crm_contacts', {
       method: 'PUT',
@@ -5981,7 +6075,7 @@ async function confirmBulkD4D() {
     _cache['nc_crm_contacts'] = merged;   // keep write-through cache in sync
     closeBulkD4D();
     renderCRM();
-    toast(`✅ Added ${leads.length} lead${leads.length===1?'':'s'} to CRM`);
+    toast(`✅ Added ${toAdd.length} lead${toAdd.length===1?'':'s'}${skipped?` · skipped ${skipped} duplicate${skipped===1?'':'s'}`:''}`);
   } catch (e) {
     btn.disabled = false; btn.textContent = 'Confirm & Add to CRM';
     const errEl = document.getElementById('bulk-d4d-error');
@@ -6034,8 +6128,53 @@ function nextDueLetter(c) {
   return 0;   // all three sent → not due until reset
 }
 function crmIsLead(c) { return ((c && c.type) || 'lead').toString().toLowerCase() === 'lead'; }
-// Only leads participate in letter campaigns / the due queue.
-function crmIsDue(c) { return crmIsLead(c) && nextDueLetter(c) > 0; }
+
+// ── Status (Active / Archived) ────────────────────────────────────────────────
+// Missing/blank status → 'Active' (existing 14 + D4D leads are already 'Active').
+function crmStatusOf(c) { return (c && c.status && String(c.status).trim()) || 'Active'; }
+function crmIsArchived(c) { return crmStatusOf(c) === 'Archived'; }
+
+// Only leads participate in letter campaigns / the due queue — and never archived.
+function crmIsDue(c) { return crmIsLead(c) && !crmIsArchived(c) && nextDueLetter(c) > 0; }
+
+// ── Address normalization (duplicate matching) ────────────────────────────────
+const _ADDR_DIRECTIONALS = new Set(['n','s','e','w','ne','nw','se','sw']);
+const _ADDR_SUFFIXES = new Set(['st','street','ave','avenue','rd','road','dr','drive','ln','lane','ct','court','blvd','way','pl','place','cir','circle','ter','terrace','hwy','pkwy']);
+function normalizeAddress(str) {
+  if (str == null) return '';
+  let s = String(str).toLowerCase().trim();
+  if (!s) return '';
+  const comma = s.indexOf(',');
+  if (comma !== -1) s = s.slice(0, comma);            // drop ", Kingman, AZ 86409"
+  s = s.replace(/[^a-z0-9\s]/g, ' ');                 // strip punctuation
+  const tokens = s.split(/\s+/).filter(t =>
+    t && !_ADDR_DIRECTIONALS.has(t) && !_ADDR_SUFFIXES.has(t)  // drop ONLY exact standalone tokens
+  );
+  return tokens.join(' ').replace(/\s+/g, ' ').trim();
+}
+// First existing contact whose property address normalizes to the same key.
+// Blank/empty addresses never match. Optionally exclude a contact id (self-edit).
+function crmFindDuplicate(address, contacts, excludeId) {
+  const key = normalizeAddress(address);
+  if (!key) return null;
+  return contacts.find(c => c.id !== excludeId && normalizeAddress(c.address) === key) || null;
+}
+function crmDupIndex(contacts) {
+  const idx = new Map();
+  for (const c of contacts) {
+    const k = normalizeAddress(c.address);
+    if (k && !idx.has(k)) idx.set(k, c);
+  }
+  return idx;
+}
+// Freshest nc_crm_contacts (re-fetch; fall back to cache). Used before dup checks.
+async function crmFetchFresh() {
+  try {
+    const res = await fetch('/api/store/nc_crm_contacts');
+    if (res.ok) { const r = await res.json(); const p = JSON.parse(r.value || '[]'); if (Array.isArray(p)) return p; }
+  } catch(e) { /* fall through */ }
+  return Array.isArray(_cache['nc_crm_contacts']) ? _cache['nc_crm_contacts'] : [];
+}
 
 // Re-fetch nc_crm_contacts, mutate, PUT the RAW array (never pre-stringify),
 // keep the write-through cache in sync. Used by all campaign/greeting writes.
@@ -6280,7 +6419,8 @@ function crmCampaignCardLine(c) {
     : '<span style="color:var(--text-muted);opacity:0.4;">○</span>').join('');
   const done = getCampaignsCompleted(c);
   const tally = done > 0 ? ` <span style="color:var(--text-muted);">· ${done} campaign${done===1?'':'s'} run</span>` : '';
-  const due = nextDueLetter(c);
+  // Archived contacts are never "due" (dots still show campaign history).
+  const due = crmIsArchived(c) ? 0 : nextDueLetter(c);
   const dueBadge = due > 0
     ? `<span style="background:rgba(201,168,76,0.15);color:var(--gold);font-size:0.62rem;font-weight:700;padding:1px 7px;border-radius:8px;white-space:nowrap;">Due: Letter ${due}</span>`
     : '';
@@ -6292,12 +6432,20 @@ function crmCampaignCardLine(c) {
 
 function renderCRM() {
   let contacts = load('crm_contacts',[]);
-  if(crmFilter==='due') contacts = contacts.filter(crmIsDue);
-  else if(crmFilter!=='all') contacts=contacts.filter(c=>crmTypeMatch(c,crmFilter));
+  if(crmFilter==='archived') {
+    contacts = contacts.filter(crmIsArchived);
+  } else {
+    // Every non-archived view hides archived contacts (like archived deals leave the dashboard).
+    contacts = contacts.filter(c => !crmIsArchived(c));
+    if(crmFilter==='due') contacts = contacts.filter(crmIsDue);
+    else if(crmFilter!=='all') contacts = contacts.filter(c=>crmTypeMatch(c,crmFilter));
+  }
   const grid = document.getElementById('crm-grid');
   if(!grid) return;
   if(!contacts.length) {
-    const emptyMsg = crmFilter==='due' ? 'Nothing due right now — every lead is up to date. 🎉' : 'No contacts yet. Add your first!';
+    const emptyMsg = crmFilter==='due' ? 'Nothing due right now — every lead is up to date. 🎉'
+      : crmFilter==='archived' ? 'No archived contacts.'
+      : 'No contacts yet. Add your first!';
     grid.innerHTML=`<div style="color:var(--text-muted);">${emptyMsg}</div>`; return;
   }
   grid.innerHTML = contacts.map(c => crmCompactCard(c)).join('');
@@ -6349,6 +6497,7 @@ window.openCrmContactModal = function(contactId) {
       btn.style.fontWeight = isActive ? '700' : '400';
     }
   });
+  applyCrmStatusButtons(crmStatusOf(c));
 
   const tagsEl = document.getElementById('crm-modal-tags');
   let tags = [];
@@ -6663,6 +6812,30 @@ window.setCrmContactType = function(newType) {
   });
   renderCRM();
   toast(`Contact type updated to ${newType}`);
+};
+
+// Highlight the Active/Archived pills to match the given status.
+function applyCrmStatusButtons(status) {
+  const archived = status === 'Archived';
+  const btns = [
+    ['active',   !archived, '#2ecc71', 'rgba(46,204,113,0.15)'],
+    ['archived', archived,  '#95a5a6', 'rgba(149,165,166,0.2)'],
+  ];
+  btns.forEach(([k, on, col, bg]) => {
+    const btn = document.getElementById(`crm-status-btn-${k}`);
+    if (btn) { btn.style.background = on ? bg : 'transparent'; btn.style.color = on ? col : 'var(--text-muted)'; btn.style.fontWeight = on ? '700' : '400'; }
+  });
+}
+
+// Manual status change (Active ⇄ Archived). Uses the fresh re-fetch write pattern
+// so the contact moves to the right tab immediately, both directions.
+window.setCrmContactStatus = async function(newStatus) {
+  const id = window._crmModalContactId;
+  if (!id) return;
+  await crmPersistContacts(arr => { const c = arr.find(x => x.id === id); if (c) c.status = newStatus; });
+  applyCrmStatusButtons(newStatus);
+  renderCRM();
+  toast(newStatus === 'Archived' ? '📦 Contact archived' : 'Contact set to Active');
 };
 
 window.saveCrmContactNotes = function() {
