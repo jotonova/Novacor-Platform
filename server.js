@@ -372,6 +372,19 @@ app.delete('/api/store/:key', async (req, res) => {
   res.json({ ok: true });
 });
 
+// Shared greeting-name rules — used by both parse-leads and greeting-names.
+// Owner names are often stored LAST MIDDLE FIRST with multiple owners + legal
+// suffixes; greeting_name is the warm salutation that follows "Dear ___,".
+const GREETING_RULES = `Rules for "greeting_name" (a warm salutation for "Dear ___,"):
+- Use FIRST/given name(s) ONLY. Drop middle names and middle initials.
+- Names may be stored LAST-first (county records, e.g. "TAKASHIMA MIKI") or first-last (freeform notes). Identify the given name(s) either way.
+- Strip legal/vesting suffixes and tokens anywhere in the name: JT, JTWROS, CP, CPWRS, TR, TRUST, LIVING TRUST, REV TRUST, REVOCABLE TRUST, FAMILY TRUST, ETAL, ET AL, LLC, LP, LLP, INC, EST, ESTATE, LE.
+- Handle multi-word last names correctly — do NOT mistake surname particles for first names: "MC COY", "VAN DER", "DE LA", "ST JOHN", "O BRIEN", "LA ROSA".
+- Multiple owners: split on "&" or "AND"; join the resulting first names with " & ".
+- Proper-case the result (Title Case).
+- Examples: "CUEN ALBERT R & LAUREN C" -> "Albert & Lauren"; "MC COY TERRY & SANDRA CPWRS" -> "Terry & Sandra"; "TAKASHIMA MIKI" -> "Miki".
+- If you genuinely cannot determine a first name, return "".`;
+
 // ── CRM: Bulk AI lead intake (Driving-for-Dollars) ────────────────────────────
 // Parses freeform D4D notes into structured CRM leads via Claude. Parse ONLY —
 // nothing is written here; the frontend previews and writes on confirm.
@@ -391,6 +404,7 @@ Extract an ARRAY of lead objects. Output ONLY valid JSON — a single JSON array
 Each object must have exactly these keys:
 {
   "name": string,              // owner name — the text AFTER the "•". Preserve exactly as written; only tidy capitalization/spacing.
+  "greeting_name": string,     // warm salutation for "Dear ___," per the greeting rules below.
   "address": string,           // the PROPERTY/subject address (e.g. "4280 Adams"). Normalize to a clean readable form; preserve as written, tidy only.
   "mailing_address": string,   // owner's mailing street address from the mailing block
   "mailing_city": string,
@@ -406,7 +420,9 @@ Rules:
 - If a line is too thin to be a real lead (no owner name AND no mailing info — just a stray comment), skip it entirely.
 - Preserve exact owner names and addresses as written; only tidy capitalization and spacing.
 - "motivation_tags" must be a JSON array of strings (may be empty []).
-- Output the JSON array and nothing else.`;
+- Output the JSON array and nothing else.
+
+${GREETING_RULES}`;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -462,6 +478,7 @@ Rules:
         return {
           id: `d4d_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
           name:            str(o.name),
+          greeting_name:   str(o.greeting_name) || str(o.name),
           address:         str(o.address),
           mailing_address: str(o.mailing_address),
           mailing_city:    str(o.mailing_city),
@@ -483,6 +500,81 @@ Rules:
   } catch (e) {
     console.error('[parse-leads]', e.message);
     res.status(500).json({ error: 'Could not parse leads: ' + e.message });
+  }
+});
+
+// ── CRM: Greeting-name backfill ───────────────────────────────────────────────
+// Takes { contacts: [{id, name}] } and returns { results: [{id, greeting_name}] }.
+// Parse ONLY — the frontend previews and writes greeting_name back on confirm.
+app.post('/api/crm/greeting-names', async (req, res) => {
+  try {
+    const input = Array.isArray(req.body && req.body.contacts) ? req.body.contacts : null;
+    if (!input) return res.status(400).json({ error: 'contacts[] is required.' });
+    const contacts = input
+      .filter(c => c && c.id != null && typeof c.name === 'string' && c.name.trim())
+      .map(c => ({ id: String(c.id), name: c.name.trim() }));
+    if (!contacts.length) return res.json({ results: [] });
+    if (contacts.length > 300) return res.status(400).json({ error: 'Too many at once — do it in smaller batches.' });
+
+    const apiKey = (process.env.ANTHROPIC_API_KEY || '').replace(/[\s\n\r]/g, '');
+    if (!apiKey) return res.status(500).json({ error: 'AI is not configured (ANTHROPIC_API_KEY missing).' });
+
+    const systemPrompt = `You convert raw owner names into warm salutation "greeting_name" values for a real estate CRM.
+
+You will receive a JSON array of {"id","name"}. Return ONLY a JSON array of {"id","greeting_name"} — one object per input, same ids. No markdown, no code fences, no preamble.
+
+${GREETING_RULES}`;
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 4000,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: JSON.stringify(contacts) }]
+      })
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      console.error('[greeting-names] Anthropic error:', response.status, JSON.stringify(data).slice(0, 400));
+      return res.status(502).json({ error: 'AI service error. Please try again in a moment.' });
+    }
+
+    const raw = data.content?.[0]?.text || '';
+    let jsonText = raw.replace(/^```(?:json)?/i, '').replace(/```$/,'').trim();
+    const start = jsonText.indexOf('[');
+    const end = jsonText.lastIndexOf(']');
+    if (start !== -1 && end !== -1 && end > start) jsonText = jsonText.slice(start, end + 1);
+
+    let parsed;
+    try { parsed = JSON.parse(jsonText); }
+    catch (e) {
+      console.error('[greeting-names] JSON parse failed. Raw:', raw.slice(0, 400));
+      return res.status(502).json({ error: 'AI returned unreadable output. Try a smaller batch.' });
+    }
+    const arr = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.results) ? parsed.results : null);
+    if (!arr) return res.status(502).json({ error: 'AI did not return a result list. Try again.' });
+
+    // Only return greeting_name for ids we actually asked about.
+    const wanted = new Map(contacts.map(c => [c.id, c.name]));
+    const results = arr
+      .filter(o => o && wanted.has(String(o.id)))
+      .map(o => {
+        const id = String(o.id);
+        const g = (o.greeting_name == null ? '' : String(o.greeting_name).trim());
+        return { id, greeting_name: g || wanted.get(id) };  // fall back to raw name if blank
+      });
+
+    res.json({ results });
+  } catch (e) {
+    console.error('[greeting-names]', e.message);
+    res.status(500).json({ error: 'Could not generate greeting names: ' + e.message });
   }
 });
 

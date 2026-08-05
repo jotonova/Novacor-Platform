@@ -2504,8 +2504,10 @@ th.sort-desc::after { content: ' ▼'; font-size: 0.6em; }
       <button class="filter-btn" onclick="filterCRM('Buyer',this)">Buyers</button>
       <button class="filter-btn" onclick="filterCRM('Partner',this)">Partners</button>
       <button class="filter-btn" onclick="filterCRM('Lead',this)">Leads</button>
+      <button class="filter-btn" onclick="filterCRM('due',this)">📬 Due for Next Letter</button>
     </div>
     <div style="display:flex;gap:8px;">
+      <button class="btn btn-ghost" onclick="openGreetingBackfill()">✨ Generate Greeting Names</button>
       <button class="btn btn-ghost" onclick="openBulkD4D()">＋ Bulk Add (D4D)</button>
       <button class="btn btn-gold" onclick="openModal('modal-new-contact')">+ Add Contact</button>
     </div>
@@ -3085,6 +3087,29 @@ th.sort-desc::after { content: ' ▼'; font-size: 0.6em; }
 </div>
 </div>
 
+<!-- Generate Greeting Names (backfill) -->
+<div class="modal-overlay hidden" id="modal-greeting-backfill">
+<div class="modal" style="max-width:640px;width:92%;max-height:88vh;overflow-y:auto;">
+  <div class="modal-header">
+    <div class="modal-title">✨ Generate Greeting Names</div>
+    <button class="modal-close" onclick="closeModal('modal-greeting-backfill')">✕</button>
+  </div>
+  <div id="greeting-backfill-body">
+    <div id="greeting-backfill-status" style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px;"></div>
+    <div id="greeting-backfill-error" style="display:none;color:#e74c3c;font-size:0.8rem;margin-bottom:10px;"></div>
+    <div id="greeting-backfill-preview" style="display:none;">
+      <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;max-height:50vh;overflow-y:auto;">
+        <table id="greeting-backfill-table" style="width:100%;border-collapse:collapse;font-size:0.78rem;"></table>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:14px;">
+        <button class="btn btn-gold" id="greeting-backfill-confirm" onclick="confirmGreetingBackfill()">Confirm & Save</button>
+        <button class="btn btn-ghost" onclick="closeModal('modal-greeting-backfill')">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
 <!-- CRM Contact Detail -->
 <div id="modal-crm-contact" class="modal-overlay hidden" style="z-index:1000;">
   <div class="modal-content" style="max-width:680px;width:90%;max-height:88vh;overflow-y:auto;padding:0;border-radius:12px;position:relative;">
@@ -3092,6 +3117,7 @@ th.sort-desc::after { content: ' ▼'; font-size: 0.6em; }
     <div style="background:var(--navy-mid,#0d1e35);padding:20px 24px 16px;border-bottom:1px solid var(--border);border-radius:12px 12px 0 0;display:flex;justify-content:space-between;align-items:flex-start;">
       <div>
         <div id="crm-modal-name" style="font-family:'Barlow Condensed',sans-serif;font-size:1.5rem;font-weight:700;color:var(--text);letter-spacing:0.03em;"></div>
+        <div id="crm-modal-greeting" style="font-size:0.78rem;color:var(--gold);margin-top:2px;"></div>
         <div id="crm-modal-address" style="font-size:0.82rem;color:var(--text-muted);margin-top:4px;"></div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;">
@@ -3147,6 +3173,15 @@ th.sort-desc::after { content: ' ▼'; font-size: 0.6em; }
     <div style="padding:14px 24px;border-bottom:1px solid var(--border);">
       <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:8px;font-weight:600;">Your Notes</div>
       <textarea id="crm-modal-notes" placeholder="Add notes about this contact..." onblur="saveCrmContactNotes()" style="width:100%;min-height:80px;padding:10px 12px;background:var(--input-bg,#0d1e35);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.82rem;resize:vertical;font-family:inherit;box-sizing:border-box;"></textarea>
+    </div>
+    <!-- Letter Campaign (3-touch) -->
+    <div style="padding:14px 24px;border-bottom:1px solid var(--border);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);font-weight:600;">📬 Letter Campaign (3-Touch)</div>
+        <div id="crm-modal-campaign-tally" style="font-size:0.72rem;color:var(--text-muted);"></div>
+      </div>
+      <div id="crm-modal-campaign" style="display:flex;flex-direction:column;gap:8px;"></div>
+      <button onclick="clearCrmCampaign(window._crmModalContactId)" style="margin-top:12px;padding:6px 12px;background:transparent;border:1px solid rgba(201,168,76,0.4);border-radius:4px;color:var(--gold);font-size:0.7rem;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;">↻ Clear Campaign / Start New</button>
     </div>
     <!-- Letters Section -->
     <div id="crm-modal-letters-section" style="padding:14px 24px;border-bottom:1px solid var(--border);display:none;">
@@ -5861,6 +5896,7 @@ function renderBulkD4DPreview() {
   const inp = 'width:100%;background:var(--input-bg,#0d1e35);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.74rem;padding:4px 6px;box-sizing:border-box;font-family:inherit;';
   let html = `<thead><tr>
     <th style="${th}">Name</th>
+    <th style="${th}">Greeting</th>
     <th style="${th}">Property Address</th>
     <th style="${th}">Mailing Address</th>
     <th style="${th}">Tags</th>
@@ -5881,6 +5917,7 @@ function renderBulkD4DPreview() {
 
     html += `<tr data-i="${i}" style="${rowStyle}">
       <td style="${cell}"><input style="${inp}" value="${_d4dEsc(l.name)}" oninput="bulkD4DEdit(${i},'name',this.value)"></td>
+      <td style="${cell}"><input style="${inp}" placeholder="Dear ___," value="${_d4dEsc(l.greeting_name)}" oninput="bulkD4DEdit(${i},'greeting_name',this.value)"></td>
       <td style="${cell}"><input style="${inp}" value="${_d4dEsc(l.address)}" oninput="bulkD4DEdit(${i},'address',this.value)"></td>
       <td style="${cell};min-width:190px;">
         <input style="${inp};margin-bottom:3px;" placeholder="Mailing street" value="${_d4dEsc(l.mailing_address)}" oninput="bulkD4DEditMailing(${i},'mailing_address',this.value,this)">
@@ -5950,6 +5987,204 @@ async function confirmBulkD4D() {
     const errEl = document.getElementById('bulk-d4d-error');
     errEl.textContent = 'Could not save: ' + e.message; errEl.style.display = 'block';
     document.getElementById('bulk-d4d-input').style.display = 'block';
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// CRM — Letter Campaign (3-touch), Due filter, Greeting names
+// ══════════════════════════════════════════════════════
+const DUE_LETTER_DAYS = 30;   // days between letters (and grace before "overdue")
+
+// Missing campaign/greeting/tally → sensible defaults (existing 14 leads render fine).
+function freshCampaign() {
+  return { letter1:{sent:false,date:null}, letter2:{sent:false,date:null}, letter3:{sent:false,date:null} };
+}
+function getCampaign(c) {
+  const camp = c && c.letterCampaign;
+  if (!camp || typeof camp !== 'object') return freshCampaign();
+  const norm = (l) => (l && typeof l === 'object') ? { sent: !!l.sent, date: l.date || null } : { sent:false, date:null };
+  return { letter1:norm(camp.letter1), letter2:norm(camp.letter2), letter3:norm(camp.letter3) };
+}
+function campaignSentCount(c) { const g = getCampaign(c); return [g.letter1,g.letter2,g.letter3].filter(l=>l.sent).length; }
+function getCampaignsCompleted(c) { const n = c && c.campaignsCompleted; return (typeof n === 'number' && n > 0) ? n : 0; }
+function crmGreeting(c) { return (c && c.greeting_name && String(c.greeting_name).trim()) || (c && c.name) || ''; }
+
+function todayISO() { return new Date().toISOString().slice(0,10); }
+function daysSince(dateStr) {
+  if (!dateStr) return Infinity;
+  const then = new Date(dateStr + 'T00:00:00');
+  if (isNaN(then)) return Infinity;
+  return Math.floor((Date.now() - then.getTime()) / 86400000);
+}
+
+// Which letter number (1-3) is due for this lead, or 0 if none due.
+// Due if: letter1 unsent (new lead), OR the most-recent sent letter was >=
+// DUE_LETTER_DAYS ago AND the next letter in sequence is unsent (also catches
+// missed deadlines — an overdue unsent letter keeps showing as due).
+function nextDueLetter(c) {
+  const g = getCampaign(c);
+  const L = [g.letter1, g.letter2, g.letter3];
+  if (!L[0].sent) return 1;
+  for (let i = 1; i < 3; i++) {
+    if (!L[i].sent) {
+      const prevDate = L[i-1].date;               // most recent sent letter's date
+      return daysSince(prevDate) >= DUE_LETTER_DAYS ? (i + 1) : 0;
+    }
+  }
+  return 0;   // all three sent → not due until reset
+}
+function crmIsLead(c) { return ((c && c.type) || 'lead').toString().toLowerCase() === 'lead'; }
+// Only leads participate in letter campaigns / the due queue.
+function crmIsDue(c) { return crmIsLead(c) && nextDueLetter(c) > 0; }
+
+// Re-fetch nc_crm_contacts, mutate, PUT the RAW array (never pre-stringify),
+// keep the write-through cache in sync. Used by all campaign/greeting writes.
+async function crmPersistContacts(mutator) {
+  let contacts = null;
+  try {
+    const res = await fetch('/api/store/nc_crm_contacts');
+    if (res.ok) {
+      const r = await res.json();
+      const parsed = JSON.parse(r.value || '[]');
+      if (Array.isArray(parsed)) contacts = parsed;
+    }
+  } catch(e) { /* fall through to cache */ }
+  // Never overwrite with an empty array on a failed/absent fetch — use cache.
+  if (contacts === null) contacts = Array.isArray(_cache['nc_crm_contacts']) ? _cache['nc_crm_contacts'] : [];
+  mutator(contacts);
+  await fetch('/api/store/nc_crm_contacts', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ value: contacts }),
+  });
+  _cache['nc_crm_contacts'] = contacts;
+  return contacts;
+}
+
+// Toggle a letter (manual). Checking stamps today; unchecking clears the date.
+async function toggleCrmLetter(id, n, checked) {
+  await crmPersistContacts(arr => {
+    const c = arr.find(x => x.id === id);
+    if (!c) return;
+    if (!c.letterCampaign || typeof c.letterCampaign !== 'object') c.letterCampaign = freshCampaign();
+    const key = 'letter' + n;
+    if (!c.letterCampaign[key]) c.letterCampaign[key] = { sent:false, date:null };
+    c.letterCampaign[key].sent = !!checked;
+    c.letterCampaign[key].date = checked ? todayISO() : null;
+  });
+  const c = load('crm_contacts', []).find(x => x.id === id);
+  if (c) renderCrmCampaignSection(c);
+  renderCRM();
+}
+
+// Clear/reset campaign; count a completed round if any letter was sent.
+async function clearCrmCampaign(id) {
+  const c = load('crm_contacts', []).find(x => x.id === id);
+  if (!c) return;
+  const any = campaignSentCount(c) > 0;
+  const msg = any
+    ? 'Start a new 3-touch round? This counts the current round as completed and resets the letters to unsent.'
+    : 'Reset this campaign to a fresh 3-touch round?';
+  if (!confirm(msg)) return;
+  await crmPersistContacts(arr => {
+    const t = arr.find(x => x.id === id);
+    if (!t) return;
+    if (campaignSentCount(t) > 0) t.campaignsCompleted = (typeof t.campaignsCompleted === 'number' ? t.campaignsCompleted : 0) + 1;
+    t.letterCampaign = freshCampaign();
+  });
+  const updated = load('crm_contacts', []).find(x => x.id === id);
+  if (updated) renderCrmCampaignSection(updated);
+  renderCRM();
+  toast('↻ Campaign reset');
+}
+
+// Render the 3-letter checklist + tally inside the open contact modal.
+function renderCrmCampaignSection(c) {
+  const g = getCampaign(c);
+  const rows = [1,2,3].map(n => {
+    const l = g['letter' + n];
+    const dateTxt = l.sent && l.date
+      ? new Date(l.date + 'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
+      : '';
+    return `<label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:0.85rem;color:var(--text);">
+      <input type="checkbox" ${l.sent?'checked':''} onchange="toggleCrmLetter(window._crmModalContactId,${n},this.checked)" style="width:16px;height:16px;accent-color:var(--gold);cursor:pointer;">
+      <span style="min-width:70px;">Letter ${n}</span>
+      <span style="font-size:0.78rem;color:var(--text-muted);">${l.sent ? ('Sent · ' + dateTxt) : 'Not sent'}</span>
+    </label>`;
+  }).join('');
+  document.getElementById('crm-modal-campaign').innerHTML = rows;
+  const done = getCampaignsCompleted(c);
+  document.getElementById('crm-modal-campaign-tally').textContent = done > 0 ? `${done} campaign${done===1?'':'s'} run` : '';
+}
+
+// ── Greeting-name backfill ────────────────────────────────────────────────────
+window._greetingBackfill = [];
+async function openGreetingBackfill() {
+  document.getElementById('greeting-backfill-error').style.display = 'none';
+  document.getElementById('greeting-backfill-preview').style.display = 'none';
+  const status = document.getElementById('greeting-backfill-status');
+  status.textContent = 'Finding contacts without a greeting name…';
+  openModal('modal-greeting-backfill');
+
+  const contacts = load('crm_contacts', []);
+  const missing = contacts.filter(c => c && c.name && !String(c.greeting_name||'').trim());
+  if (!missing.length) { status.textContent = 'All contacts already have a greeting name. ✅'; return; }
+
+  status.textContent = `Generating greetings for ${missing.length} contact${missing.length===1?'':'s'}…`;
+  try {
+    const res = await fetch('/api/crm/greeting-names', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contacts: missing.map(c => ({ id: c.id, name: c.name })) }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || 'Failed to generate.');
+    const nameById = new Map(missing.map(c => [c.id, c.name]));
+    window._greetingBackfill = (data.results || [])
+      .filter(r => r && nameById.has(r.id))
+      .map(r => ({ id: r.id, name: nameById.get(r.id), greeting_name: String(r.greeting_name||'').trim() }));
+    if (!window._greetingBackfill.length) throw new Error('No greetings were generated. Try again.');
+    status.textContent = `Review ${window._greetingBackfill.length} greeting${window._greetingBackfill.length===1?'':'s'} — edit any, then confirm.`;
+    renderGreetingBackfillPreview();
+    document.getElementById('greeting-backfill-preview').style.display = 'block';
+  } catch (e) {
+    const err = document.getElementById('greeting-backfill-error');
+    err.textContent = e.message; err.style.display = 'block';
+    status.textContent = '';
+  }
+}
+function renderGreetingBackfillPreview() {
+  const th = 'padding:6px 8px;text-align:left;font-size:0.66rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card-bg,#0d1e35);';
+  const cell = 'padding:5px 8px;border-bottom:1px solid var(--border);vertical-align:middle;';
+  const inp = 'width:100%;background:var(--input-bg,#0d1e35);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.78rem;padding:4px 6px;box-sizing:border-box;font-family:inherit;';
+  let html = `<thead><tr><th style="${th}">Raw Name</th><th style="${th}">Greeting (Dear ___,)</th></tr></thead><tbody>`;
+  window._greetingBackfill.forEach((r, i) => {
+    html += `<tr>
+      <td style="${cell};color:var(--text-muted);font-size:0.74rem;">${_d4dEsc(r.name)}</td>
+      <td style="${cell}"><input style="${inp}" value="${_d4dEsc(r.greeting_name)}" oninput="greetingBackfillEdit(${i}, this.value)"></td>
+    </tr>`;
+  });
+  html += '</tbody>';
+  document.getElementById('greeting-backfill-table').innerHTML = html;
+}
+function greetingBackfillEdit(i, val) { if (window._greetingBackfill[i]) window._greetingBackfill[i].greeting_name = val; }
+async function confirmGreetingBackfill() {
+  const items = window._greetingBackfill.filter(r => String(r.greeting_name||'').trim());
+  if (!items.length) { closeModal('modal-greeting-backfill'); return; }
+  const btn = document.getElementById('greeting-backfill-confirm');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const byId = new Map(items.map(r => [r.id, r.greeting_name.trim()]));
+    await crmPersistContacts(arr => {
+      arr.forEach(c => { if (byId.has(c.id)) c.greeting_name = byId.get(c.id); });
+    });
+    closeModal('modal-greeting-backfill');
+    renderCRM();
+    toast(`✨ Saved ${items.length} greeting name${items.length===1?'':'s'}`);
+  } catch (e) {
+    btn.disabled = false; btn.textContent = 'Confirm & Save';
+    const err = document.getElementById('greeting-backfill-error');
+    err.textContent = 'Could not save: ' + e.message; err.style.display = 'block';
   }
 }
 
@@ -6031,15 +6266,40 @@ function crmCompactCard(c) {
     <div style="font-size:0.78rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
       ✉️ ${c.email||'—'}
     </div>
+    ${crmCampaignCardLine(c)}
+  </div>`;
+}
+
+// Compact campaign line for a card: ●○○ dots, tally if any, and a "Due: Letter N" badge.
+// Only shown for leads (letter campaigns are a lead concept).
+function crmCampaignCardLine(c) {
+  if (!crmIsLead(c)) return '';
+  const sent = campaignSentCount(c);
+  const dots = [1,2,3].map(n => n <= sent
+    ? '<span style="color:var(--gold);">●</span>'
+    : '<span style="color:var(--text-muted);opacity:0.4;">○</span>').join('');
+  const done = getCampaignsCompleted(c);
+  const tally = done > 0 ? ` <span style="color:var(--text-muted);">· ${done} campaign${done===1?'':'s'} run</span>` : '';
+  const due = nextDueLetter(c);
+  const dueBadge = due > 0
+    ? `<span style="background:rgba(201,168,76,0.15);color:var(--gold);font-size:0.62rem;font-weight:700;padding:1px 7px;border-radius:8px;white-space:nowrap;">Due: Letter ${due}</span>`
+    : '';
+  return `<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:8px;padding-top:7px;border-top:1px solid var(--border);">
+    <span style="font-size:0.8rem;letter-spacing:2px;">${dots}<span style="font-size:0.68rem;letter-spacing:0;">${tally}</span></span>
+    ${dueBadge}
   </div>`;
 }
 
 function renderCRM() {
   let contacts = load('crm_contacts',[]);
-  if(crmFilter!=='all') contacts=contacts.filter(c=>crmTypeMatch(c,crmFilter));
+  if(crmFilter==='due') contacts = contacts.filter(crmIsDue);
+  else if(crmFilter!=='all') contacts=contacts.filter(c=>crmTypeMatch(c,crmFilter));
   const grid = document.getElementById('crm-grid');
   if(!grid) return;
-  if(!contacts.length) { grid.innerHTML='<div style="color:var(--text-muted);">No contacts yet. Add your first!</div>'; return; }
+  if(!contacts.length) {
+    const emptyMsg = crmFilter==='due' ? 'Nothing due right now — every lead is up to date. 🎉' : 'No contacts yet. Add your first!';
+    grid.innerHTML=`<div style="color:var(--text-muted);">${emptyMsg}</div>`; return;
+  }
   grid.innerHTML = contacts.map(c => crmCompactCard(c)).join('');
 }
 
@@ -6059,7 +6319,12 @@ window.openCrmContactModal = function(contactId) {
   window._crmModalContactId = contactId;
 
   document.getElementById('crm-modal-name').textContent = formatCrmName(c.name);
+  const greetEl = document.getElementById('crm-modal-greeting');
+  const greet = crmGreeting(c);
+  greetEl.textContent = greet ? `Dear ${greet},` : '';
+  greetEl.style.display = greet ? 'block' : 'none';
   document.getElementById('crm-modal-address').textContent = c.address||'No address on file';
+  renderCrmCampaignSection(c);
   const scoreEl = document.getElementById('crm-modal-score');
   scoreEl.textContent = c.ai_score ? `AI: ${c.ai_score}` : '';
   scoreEl.style.display = c.ai_score ? 'inline' : 'none';
