@@ -6516,13 +6516,16 @@ window.openCrmContactModal = function(contactId) {
   const envelopeSection = document.getElementById('crm-modal-envelope-section');
   window._crmModalLead = null;
 
-  // Always show envelope section, pre-fill from stored mailing fields
+  // Always show envelope section. Pre-fill from the OWNER MAILING fields
+  // (mailing_*), NOT the property address — so absentee owners get their real
+  // mailing address. Owner-occupants have mailing_* == property, so they work too.
+  // Fields stay user-editable (override before printing).
   if(envelopeSection) {
     envelopeSection.style.display = 'block';
-    document.getElementById('crm-env-street').value = c.owner_mailing_address || c.address?.split(',')[0]?.trim() || '';
-    document.getElementById('crm-env-city').value = c.owner_mailing_city || c.address?.split(',')[1]?.trim() || '';
-    document.getElementById('crm-env-state').value = c.owner_mailing_state || 'AZ';
-    document.getElementById('crm-env-zip').value = c.owner_mailing_zip || '';
+    document.getElementById('crm-env-street').value = c.mailing_address || c.address || '';
+    document.getElementById('crm-env-city').value   = c.mailing_city  || '';
+    document.getElementById('crm-env-state').value  = c.mailing_state || c.state || '';
+    document.getElementById('crm-env-zip').value    = c.mailing_zip   || '';
   }
 
   if(lettersSection) {
@@ -6765,10 +6768,12 @@ window.crmPrintEnvelope = function() {
   const c = contacts.find(x=>x.id===window._crmModalContactId);
   if(!c) return;
   const RETURN_ADDRESS = ['Attn: Amy Casanova', '2800 Hualapai Mountain Rd', 'Kingman AZ, 86401'];
-  const street = document.getElementById('crm-env-street')?.value || c.address || '';
-  const city = document.getElementById('crm-env-city')?.value || '';
-  const state = document.getElementById('crm-env-state')?.value || 'AZ';
-  const zip = document.getElementById('crm-env-zip')?.value || '';
+  // Use the (user-editable) envelope inputs, which are pre-filled mailing-first;
+  // empty-fallbacks stay mailing-first too so output matches the modal.
+  const street = document.getElementById('crm-env-street')?.value || c.mailing_address || c.address || '';
+  const city = document.getElementById('crm-env-city')?.value || c.mailing_city || '';
+  const state = document.getElementById('crm-env-state')?.value || c.mailing_state || c.state || '';
+  const zip = document.getElementById('crm-env-zip')?.value || c.mailing_zip || '';
   const cityLine = [city, state, zip].filter(Boolean).join(' ');
   const parts = (c.name||'').trim().split(/\s+/);
   const displayName = parts.length > 1
