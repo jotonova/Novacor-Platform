@@ -6595,10 +6595,12 @@ window.crmViewLetter = function(type) {
   const formattedName = ownerName.trim().split(/\s+/)
     .map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' ');
   const today = new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
-  const mailingStreet = c?.owner_mailing_address || address.split(',')[0]?.trim() || '';
-  const mailingCity = c?.owner_mailing_city || '';
-  const mailingState = c?.owner_mailing_state || 'AZ';
-  const mailingZip = c?.owner_mailing_zip || '';
+  // Recipient address = OWNER MAILING fields (mailing_*), not the property —
+  // so absentee owners get their real address (same fix as the envelope, 116846f).
+  const mailingStreet = c?.mailing_address || address.split(',')[0]?.trim() || '';
+  const mailingCity = c?.mailing_city || '';
+  const mailingState = c?.mailing_state || c?.state || '';
+  const mailingZip = c?.mailing_zip || '';
   const cityLine = [mailingCity, mailingState, mailingZip].filter(Boolean).join(', ');
 
   const bodyHtml = letter
@@ -6702,7 +6704,36 @@ window.crmViewLetter = function(type) {
   const w = window.open('', '_blank');
   w.document.write(html);
   w.document.close();
+
+  // Option B: after the printable letter opens, offer to mark the next-due
+  // letter as sent today. Clicking No (e.g. a reprint for a typo) changes nothing.
+  crmMaybeMarkLetterSent(window._crmModalContactId);
 };
+
+// The next UNSENT letter in sequence (1→2→3), or null if all sent. Note: this is
+// deliberately NOT nextDueLetter() — that one gates on the 30-day interval and
+// would suppress the prompt on a same-day reprint (e.g. Letter 1 sent today →
+// nextDueLetter=0). For "which letter am I mailing now" we want next-unsent.
+function nextUnsentLetter(c) {
+  const g = getCampaign(c);
+  if (!g.letter1.sent) return 1;
+  if (!g.letter2.sent) return 2;
+  if (!g.letter3.sent) return 3;
+  return null;
+}
+
+// Prompt to mark the next campaign letter sent (today) after a letter prints.
+// Reuses toggleCrmLetter (same set sent:true + date logic as the manual boxes),
+// which persists via crmPersistContacts and re-renders the modal + cards.
+async function crmMaybeMarkLetterSent(id) {
+  const c = load('crm_contacts', []).find(x => x.id === id);
+  if (!c) return;                       // not a saved CRM contact → nothing to mark
+  const n = nextUnsentLetter(c);
+  if (!n) return;                       // all 3 already sent → don't prompt
+  if (confirm(`Mark Letter ${n} as sent today (${todayISO()})?`)) {
+    await toggleCrmLetter(id, n, true);
+  }
+}
 
 window.crmRegenerateLetters = async function() {
   const contacts = load('crm_contacts', []);
